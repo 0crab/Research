@@ -28,14 +28,20 @@ uint64_t *runtimelist;
 atomic<int> stopMeasure(0);
 uint64_t runner_count;
 
+struct alignas(128) R_BUF{
+    uint64_t r_buf;
+};
+
+R_BUF * r_bufs;
+
 void concurrent_worker(int tid){
     Tracer t;
     t.startTime();
     while(stopMeasure.load(memory_order_relaxed) == 0){
 
         for(size_t i = 0; i < TEST_NUM; i++){
-            uint64_t * tmp = new uint64_t (i);
             if(writelist[i]){
+                uint64_t * tmp = new uint64_t (i);
                 if(conflictlist[i]){
                     kvlist[THREAD_NUM].value_queue.enqueue(tmp,tid);
                 }else{
@@ -43,9 +49,9 @@ void concurrent_worker(int tid){
                 }
             }else{
                 if(conflictlist[i]){
-                    kvlist[THREAD_NUM].value_queue.get_tail_item(tmp,tid);
+                    kvlist[THREAD_NUM].value_queue.get_tail_item(&r_bufs[tid].r_buf,tid);
                 }else{
-                    kvlist[tid].value_queue.get_tail_item(tmp,tid);
+                    kvlist[tid].value_queue.get_tail_item(&r_bufs[tid].r_buf,tid);
                 }
             }
         }
@@ -87,6 +93,8 @@ int main(int argc, char **argv){
     }
 
     runtimelist = new uint64_t[THREAD_NUM]();
+
+    r_bufs = new R_BUF[THREAD_NUM];
 
     srand(time(NULL));
     conflictlist = new bool[TEST_NUM];
