@@ -91,9 +91,9 @@ int main(int argc, char **argv){
     srand(time(NULL));
     conflictlist = new bool[TEST_NUM];
     writelist = new bool[TEST_NUM];
-    for(size_t i = 0; i < THREAD_NUM; i++ ){
-        conflictlist[i] = rand() * 1.0 / RAND_MAX < CONFLICT_RATIO;
-        writelist[i] = rand()  * 1.0 / RAND_MAX < WRITE_RATIO;
+    for(size_t i = 0; i < TEST_NUM; i++ ){
+        conflictlist[i] = rand() * 1.0 / RAND_MAX * 100  < CONFLICT_RATIO;
+        writelist[i] = rand() *1.0 / RAND_MAX * 100 < WRITE_RATIO;
     }
 
     vector<thread> threads;
@@ -111,5 +111,13 @@ int main(int argc, char **argv){
     throughput = runner_count * 1.0 / runtime;
     cout<<"runtime "<<runtime / 1000000<<"s"<<endl;
     cout<<"***throughput "<<throughput<<endl<<endl;
+
+    size_t a1=0,a2=0;
+    for(size_t i = 0; i < TEST_NUM;i++){
+        if(writelist[i]) a1++;
+        if(conflictlist[i]) a2++;
+    }
+    cout<<"write_num "<<a1<<endl;
+    cout<<"conflict_num "<<a2<<endl;
 
 }
