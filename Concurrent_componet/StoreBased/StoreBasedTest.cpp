@@ -86,8 +86,9 @@ int main(int argc, char **argv){
     //init kvlist
     kvlist = new KV_OBJ[THREAD_NUM + 1];
     for(size_t i = 0; i < THREAD_NUM + 1; i++) {
+        uint64_t * tmp = new uint64_t(0);
         kvlist[i].key = key_demo;
-        kvlist[i].value_ptr.store(nullptr, std::memory_order_release);
+        kvlist[i].value_ptr.store(tmp, std::memory_order_release);
     }
 
     runtimelist = new uint64_t[THREAD_NUM]();
