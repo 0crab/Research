@@ -3,6 +3,8 @@ project(Research)
 
 set(CMAKE_CXX_STANDARD 14)
 
-add_subdirectory(Concurrent_componet)
+add_subdirectory(Concurrent_componet/MSQ)
+
+add_subdirectory(Concurrent_componet/StoreBased)
 
 add_executable(Research main.cpp)
