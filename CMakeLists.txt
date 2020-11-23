@@ -7,4 +7,6 @@ add_subdirectory(Concurrent_componet/MSQ)
 
 add_subdirectory(Concurrent_componet/StoreBased)
 
+add_subdirectory(Concurrent_componet/MultiRoad)
+
 add_executable(Research main.cpp)
