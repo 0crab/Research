@@ -18,6 +18,7 @@ static const int value_para_num = 10;
 struct alignas(128) V_PTR{
     atomic<uint64_t *>  vp;
     atomic<bool> write_flag;
+    atomic<bool> have_value;
 };
 
 struct alignas(128) KV_OBJ{
@@ -52,6 +53,8 @@ inline void store_value(int tid, int index , uint64_t * v){
             if(kvlist[index].vps[ind].write_flag.compare_exchange_strong(expected,true)){
                 //TODO GC
                 kvlist[index].vps[ind].vp.store(v);
+                if(!kvlist[index].vps[ind].have_value)
+                    kvlist[index].vps[ind].have_value.store(true);
                 kvlist[index].v_index.store(ind);
                 kvlist[index].vps[ind].write_flag.store(false);
                 break;
@@ -64,8 +67,9 @@ inline void store_value(int tid, int index , uint64_t * v){
 inline void read_value(int tid, int index , uint64_t * v){
     //read  - v index change
     int ind = index % value_para_num;
+
     while(true){
-        if(!kvlist[index].vps[ind].write_flag.load()){
+        if(kvlist[index].vps[ind].have_value.load() && !kvlist[index].vps[ind].write_flag.load()){
             *v = * kvlist[index].vps[ind].vp.load();
             break;
         }
@@ -131,8 +135,10 @@ int main(int argc, char **argv){
         for(size_t j = 0; j < value_para_num; j++){
             kvlist[i].vps[j].write_flag.store(false);
             kvlist[i].vps[j].vp = nullptr;
+            kvlist[i].vps[j].have_value.store(false);
         }
         kvlist[i].vps[0].vp = tmp ;
+        kvlist[i].vps[0].have_value.store(true);
         kvlist[i].v_index.store(0);
     }
 
