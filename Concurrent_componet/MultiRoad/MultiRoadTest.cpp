@@ -47,21 +47,16 @@ inline void store_value(int tid, int index , uint64_t * v){
     int ind = index % value_para_num;
     //find not locked vp
     while(true){
-        if(!kvlist[index].vps[ind].write_flag.load()){
-            //mutual write
-            bool expected = false;
-            if(kvlist[index].vps[ind].write_flag.compare_exchange_strong(expected,true)){
-                //TODO GC
-                kvlist[index].vps[ind].vp.store(v);
-                if(!kvlist[index].vps[ind].have_value)
-                    kvlist[index].vps[ind].have_value.store(true);
-                kvlist[index].v_index.store(ind);
-                kvlist[index].vps[ind].write_flag.store(false);
-                break;
-            }
+        uint64_t * expected  = kvlist[index].vps[ind].have_value ? kvlist[index].vps[ind].vp.load(): nullptr;
+        if(kvlist[index].vps[ind].vp.compare_exchange_strong(expected,v)){
+            if(!kvlist[index].vps[ind].have_value)
+                kvlist[index].vps[ind].have_value.store(true);
+            //GC expected ptr
+            kvlist[index].v_index.store(ind);
+            break;
         }
         ind = (ind + 1) % value_para_num;
-    };
+    }
 }
 
 inline void read_value(int tid, int index , uint64_t * v){
@@ -69,7 +64,7 @@ inline void read_value(int tid, int index , uint64_t * v){
     int ind = index % value_para_num;
 
     while(true){
-        if(kvlist[index].vps[ind].have_value.load() && !kvlist[index].vps[ind].write_flag.load()){
+        if(kvlist[index].vps[ind].have_value.load()){
             *v = * kvlist[index].vps[ind].vp.load();
             break;
         }
