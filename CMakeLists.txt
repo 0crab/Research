@@ -11,4 +11,6 @@ add_subdirectory(Concurrent_componet/MultiRoad)
 
 add_subdirectory(Concurrent_componet/SingleRoad)
 
+add_subdirectory(Concurrent_componet/CAS_TEST)
+
 add_executable(Research main.cpp)
