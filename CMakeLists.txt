@@ -9,4 +9,6 @@ add_subdirectory(Concurrent_componet/StoreBased)
 
 add_subdirectory(Concurrent_componet/MultiRoad)
 
+add_subdirectory(Concurrent_componet/SingleRoad)
+
 add_executable(Research main.cpp)
