@@ -24,6 +24,8 @@ struct alignas(128) KV_OBJ{
 
 KV_OBJ * kvlist;
 
+uint64_t ** opvaluelist;
+
 bool * conflictlist;
 bool * writelist;
 uint64_t *runtimelist;
@@ -31,11 +33,11 @@ uint64_t *runtimelist;
 atomic<int> stopMeasure(0);
 uint64_t runner_count;
 
+uint64_t g_value;
+
 struct alignas(128) R_BUF{
     uint64_t r_buf;
 };
-
-R_BUF * r_bufs;
 
 
 inline void store_value(int tid, int index , uint64_t * v) {
@@ -48,28 +50,27 @@ inline void store_value(int tid, int index , uint64_t * v) {
     }
 }
 
-inline void read_value(int tid, int index , uint64_t * v){
-    *v = * kvlist[index].vp.load();
+inline void read_value(int tid, int index , uint64_t & v){
+    v += * kvlist[index].vp.load();
 }
 
 void concurrent_worker(int tid){
+    uint64_t l_value;
     Tracer t;
     t.startTime();
     while(stopMeasure.load(memory_order_relaxed) == 0){
-
         for(size_t i = 0; i < TEST_NUM; i++){
             if(writelist[i]){
-                uint64_t * tmp = new uint64_t (i);
                 if(conflictlist[i]){
-                    store_value(tid,THREAD_NUM,tmp);
+                    store_value(tid,THREAD_NUM,opvaluelist[i]);
                 }else{
-                    store_value(tid,tid,tmp);
+                    store_value(tid,tid,opvaluelist[i]);
                 }
             }else{
                 if(conflictlist[i]){
-                    read_value(tid,THREAD_NUM,&r_bufs[tid].r_buf);
+                    read_value(tid,THREAD_NUM,l_value);
                 }else{
-                    read_value(tid,tid,&r_bufs[tid].r_buf);
+                    read_value(tid,tid,l_value);
                 }
             }
         }
@@ -81,6 +82,7 @@ void concurrent_worker(int tid){
         }
     }
     runtimelist[tid] = t.getRunTime();
+    g_value += l_value;
 }
 
 
@@ -110,9 +112,15 @@ int main(int argc, char **argv){
         kvlist[i].vp = tmp ;
     }
 
+    opvaluelist = new uint64_t *[TEST_NUM];
+    for(size_t i = 0;i < TEST_NUM;i++){
+        opvaluelist[i] = new uint64_t(i);
+    }
+
+    g_value = 0;
+
     runtimelist = new uint64_t[THREAD_NUM]();
 
-    r_bufs = new R_BUF[THREAD_NUM];
 
     srand(time(NULL));
     conflictlist = new bool[TEST_NUM];
@@ -135,6 +143,8 @@ int main(int argc, char **argv){
         runtime += runtimelist[i];
     runtime /= THREAD_NUM;
     throughput = runner_count * 1.0 / runtime;
+    cout<<"runner_count "<<runner_count<<endl;
+    cout<<"g_value "<<g_value<<endl;
     cout<<"runtime "<<runtime / 1000000<<"s"<<endl;
     cout<<"***throughput "<<throughput<<endl<<endl;
 
