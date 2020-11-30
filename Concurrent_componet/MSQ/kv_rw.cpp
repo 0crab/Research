@@ -25,6 +25,8 @@ bool * conflictlist;
 bool * writelist;
 uint64_t *runtimelist;
 
+uint64_t ** opvaluelist;
+
 atomic<int> stopMeasure(0);
 uint64_t runner_count;
 
@@ -34,31 +36,32 @@ struct alignas(128) R_BUF{
 
 R_BUF * r_bufs;
 
+uint64_t g_value;
+
 void concurrent_worker(int tid){
+    uint64_t l_value = 0;
+    int index = 0;
     Tracer t;
     t.startTime();
     while(stopMeasure.load(memory_order_relaxed) == 0){
 
         for(size_t i = 0; i < TEST_NUM; i++){
             if(writelist[i]){
-                uint64_t * tmp = new uint64_t (i);
-                if(conflictlist[i]){
-                    kvlist[THREAD_NUM].value_queue.enqueue(tmp,tid);
-                }else{
-                    kvlist[tid].value_queue.enqueue(tmp,tid);
-                }
+                index = conflictlist[i] ? THREAD_NUM : tid;
+
+                kvlist[index].value_queue.enqueue(opvaluelist[i],tid);
+
             }else{
-                if(conflictlist[i]){
-                    kvlist[THREAD_NUM].value_queue.get_tail_item(&r_bufs[tid].r_buf,tid);
-                }else{
-                    kvlist[tid].value_queue.get_tail_item(&r_bufs[tid].r_buf,tid);
-                }
+                index = conflictlist[i] ? THREAD_NUM : tid;
+
+                kvlist[index].value_queue.get_tail_item_l(l_value,tid);
+
             }
         }
 
         __sync_fetch_and_add(&runner_count,TEST_NUM);
         uint64_t tmptruntime = t.fetchTime();
-        if(tmptruntime / 1000000 > TEST_TIME){
+        if(tmptruntime / 1000000 >= TEST_TIME){
             stopMeasure.store(1, memory_order_relaxed);
         }
     }
@@ -90,6 +93,11 @@ int main(int argc, char **argv){
         uint64_t * tmp = new uint64_t(0);
         kvlist[i].key = key_demo;
         kvlist[i].value_queue.enqueue(tmp,0);
+    }
+
+    opvaluelist = new uint64_t *[TEST_NUM];
+    for(size_t i = 0;i < TEST_NUM;i++){
+        opvaluelist[i] = new uint64_t(i);
     }
 
     runtimelist = new uint64_t[THREAD_NUM]();

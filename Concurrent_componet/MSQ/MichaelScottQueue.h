@@ -162,6 +162,14 @@ public:
         hp.clear(tid);
         return true;
     }
+    bool get_tail_item_l(uint64_t & l_value,const int tid){
+        Node *ltail = hp.protectPtr(kHpTail, tail, tid);
+        //do copy work
+        //copy_func(target,ltail->item);
+        l_value += *ltail->item;
+        hp.clear(tid);
+        return true;
+    }
 };
 
 #endif /* _MICHAEL_SCOTT_QUEUE_HP_H_ */

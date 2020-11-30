@@ -84,7 +84,7 @@ void concurrent_worker(int tid){
 
         __sync_fetch_and_add(&runner_count,TEST_NUM);
         uint64_t tmptruntime = t.fetchTime();
-        if(tmptruntime / 1000000 > TEST_TIME){
+        if(tmptruntime / 1000000 >= TEST_TIME){
             stopMeasure.store(1, memory_order_relaxed);
         }
     }
