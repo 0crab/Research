@@ -2,6 +2,8 @@
 #include <thread>
 #include "tracer.h"
 
+#define VPP 1
+
 using namespace std;
 
 static int THREAD_NUM ;
@@ -40,38 +42,30 @@ struct alignas(128) R_BUF{
 };
 
 
-inline void store_value(int tid, int index , uint64_t * v) {
-    while (true) {
-        uint64_t *expected = kvlist[index].vp.load();
-        if (kvlist[index].vp.compare_exchange_strong(expected, v)) {
-            //GC expected ptr
-            break;
-        }
-    }
-}
-
-inline void read_value(int tid, int index , uint64_t & v){
-    v += * kvlist[index].vp.load();
-}
 
 void concurrent_worker(int tid){
-    uint64_t l_value;
+    uint64_t l_value=0;
+    int index = 0;
     Tracer t;
     t.startTime();
     while(stopMeasure.load(memory_order_relaxed) == 0){
         for(size_t i = 0; i < TEST_NUM; i++){
             if(writelist[i]){
-                if(conflictlist[i]){
-                    store_value(tid,THREAD_NUM,opvaluelist[i]);
-                }else{
-                    store_value(tid,tid,opvaluelist[i]);
+                index = conflictlist[i] ? THREAD_NUM : tid;
+
+                while (true) {
+                    uint64_t *expected = kvlist[index].vp.load();
+                    if (kvlist[index].vp.compare_exchange_strong(expected, opvaluelist[i])) {
+                        //GC expected ptr
+                        break;
+                    }
                 }
+
             }else{
-                if(conflictlist[i]){
-                    read_value(tid,THREAD_NUM,l_value);
-                }else{
-                    read_value(tid,tid,l_value);
-                }
+                index = conflictlist[i] ? THREAD_NUM : tid;
+
+                l_value += * kvlist[index].vp.load();
+
             }
         }
 

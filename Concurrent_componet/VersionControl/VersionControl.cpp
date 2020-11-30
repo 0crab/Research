@@ -3,6 +3,8 @@
 #include "tracer.h"
 #include "version_control.h"
 
+#define VPP 1
+
 using namespace std;
 
 static int THREAD_NUM ;
@@ -43,44 +45,40 @@ struct alignas(128) R_BUF{
 };
 
 
-inline void store_value(int tid, int index , uint64_t * v) {
-    bool replaced = false;
-    while (!locks[THREAD_NUM].try_lock(replaced) && !replaced) {
-        std::this_thread::yield();
-    }
-    * kvlist[index].vp = *v;
-    locks[THREAD_NUM].unlock(false);
-}
-
-inline void read_value(int tid, int index , uint64_t & v){
-    GenLock before, after;
-    do {
-        before = locks[THREAD_NUM].load();
-        v += * kvlist[index].vp;
-        do {
-            after = locks[THREAD_NUM].load();
-        } while (after.locked /*|| after.replaced*/);
-    } while (before.gen_number != after.gen_number);
-}
-
 void concurrent_worker(int tid){
-    uint64_t l_value;
+    uint64_t l_value = 0;
+    int index = 0;
     Tracer t;
     t.startTime();
     while(stopMeasure.load(memory_order_relaxed) == 0){
         for(size_t i = 0; i < TEST_NUM; i++){
             if(writelist[i]){
-                if(conflictlist[i]){
-                    store_value(tid,THREAD_NUM,opvaluelist[i]);
-                }else{
-                    store_value(tid,tid,opvaluelist[i]);
+                index = conflictlist[i] ? THREAD_NUM : tid;
+                bool replaced = false;
+                while (!locks[index].try_lock(replaced) && !replaced) {
+                    std::this_thread::yield();
                 }
+#ifdef VPP
+                l_value++;
+#else
+                * kvlist[index].vp = * opvaluelist[i];
+#endif
+                locks[index].unlock(false);
+
             }else{
-                if(conflictlist[i]){
-                    read_value(tid,THREAD_NUM,l_value);
-                }else{
-                    read_value(tid,tid,l_value);
-                }
+                index = conflictlist[i] ? THREAD_NUM : tid;
+                GenLock before, after;
+                do {
+                    before = locks[index].load();
+#ifdef VPP
+                    l_value;
+#else
+                    l_value += * kvlist[index].vp;
+#endif
+                    do {
+                        after = locks[index].load();
+                    } while (after.locked /*|| after.replaced*/);
+                } while (before.gen_number != after.gen_number);
             }
         }
 
