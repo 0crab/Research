@@ -5,4 +5,4 @@ set(CMAKE_CXX_STANDARD 14)
 
 link_libraries(pthread)
 
-add_executable(VersionControl.cpp VersionControl.cpp)
+add_executable(VersionControl VersionControl.cpp)
