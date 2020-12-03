@@ -5,10 +5,10 @@ set(CMAKE_CXX_STANDARD 14)
 
 add_subdirectory(Concurrent_componet/MSQ)
 
-add_subdirectory(Concurrent_componet/MultiRoad)
-
 add_subdirectory(Concurrent_componet/SingleRoad)
 
 add_subdirectory(Concurrent_componet/RWlock)
 
 add_subdirectory(Concurrent_componet/VersionControl)
+
+add_subdirectory(Concurrent_componet/HazaPointer)

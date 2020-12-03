@@ -3,6 +3,4 @@ project(Research)
 
 set(CMAKE_CXX_STANDARD 14)
 
-link_libraries(pthread)
-
-add_executable(MultiRoadTest MultiRoadTest.cpp)
+add_executable(ha HazardNumaDummyTest.cpp)

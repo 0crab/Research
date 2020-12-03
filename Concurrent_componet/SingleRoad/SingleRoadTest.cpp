@@ -1,8 +1,9 @@
 #include <iostream>
 #include <thread>
 #include "tracer.h"
+#include "brown_reclaim.h"
 
-#define VPP 1
+//#define VPP 1
 
 using namespace std;
 
@@ -11,20 +12,6 @@ static int TEST_NUM;
 static int TEST_TIME;
 static double CONFLICT_RATIO;
 static double WRITE_RATIO;
-
-//static char test_str[9] = "deedbeef";
-
-static const uint64_t key_demo = 12345678;
-
-//static const int value_para_num = 1;
-
-
-struct alignas(128) KV_OBJ{
-    uint64_t key;
-    atomic<uint64_t * > vp;
-};
-
-KV_OBJ * kvlist;
 
 uint64_t ** opvaluelist;
 
@@ -37,13 +24,30 @@ uint64_t runner_count;
 
 uint64_t g_value;
 
-struct alignas(128) R_BUF{
-    uint64_t r_buf;
+class node {
+public:
+    uint64_t key;
+    uint64_t value;
+public:
+    node() : key(-1), value(-1) {}
+
+    ~node() { value = -1; }
 };
 
+static const int align_with = 10;
+static int bucket_num;
 
+std::atomic<uint64_t> *bucket;
+
+ihazard<node> *deallocator;
+
+#define alloc allocator_new
+#define pool pool_perthread_and_shared
+
+typedef brown_reclaim<node , alloc<node>, pool<>, reclaimer_hazardptr<>> brown6;
 
 void concurrent_worker(int tid){
+    deallocator->initThread(tid);
     uint64_t l_value=0;
     int index = 0;
     Tracer t;
@@ -51,21 +55,26 @@ void concurrent_worker(int tid){
     while(stopMeasure.load(memory_order_relaxed) == 0){
         for(size_t i = 0; i < TEST_NUM; i++){
             if(writelist[i]){
-                index = conflictlist[i] ? THREAD_NUM : tid;
+                index = conflictlist[i] ? THREAD_NUM * align_with : tid * align_with;
 
-                while (true) {
-                    uint64_t *expected = kvlist[index].vp.load();
-                    if (kvlist[index].vp.compare_exchange_strong(expected, opvaluelist[i])) {
-                        //GC expected ptr
-                        break;
-                    }
-                }
+                node *ptr = (node *) deallocator->allocate(tid);
+                ptr->key = index ;
+                ptr->value = 1;
+
+                uint64_t old;
+                do{
+                    old = bucket[index].load();
+                }while(!bucket[index].compare_exchange_strong(old, (uint64_t) ptr)); //changed memory order
+                node *oldptr = (node *) old;
+                assert(oldptr->value == 1);
+                deallocator->free(old);
 
             }else{
-                index = conflictlist[i] ? THREAD_NUM : tid;
+                index = conflictlist[i] ? THREAD_NUM * align_with: tid * align_with;
 
-                l_value += * kvlist[index].vp.load();
-
+                node *ptr = (node *) deallocator->load(tid, std::ref(bucket[index]));
+                l_value += ptr->value;
+                deallocator->read(tid);
             }
         }
 
@@ -98,17 +107,18 @@ int main(int argc, char **argv){
         "conflict_ratio "<<CONFLICT_RATIO<<endl<<
         "write_ratio "<<WRITE_RATIO<<endl;
 
-    //init kvlist
-    kvlist = new KV_OBJ[THREAD_NUM + 1];
-    for(size_t i = 0; i < THREAD_NUM + 1; i++) {
-        uint64_t * tmp = new uint64_t(0);
-        kvlist[i].key = key_demo;
-        kvlist[i].vp = tmp ;
-    }
+    deallocator = new brown6(THREAD_NUM);
 
-    opvaluelist = new uint64_t *[TEST_NUM];
-    for(size_t i = 0;i < TEST_NUM;i++){
-        opvaluelist[i] = new uint64_t(i);
+    bucket_num = (THREAD_NUM+1)*align_with;
+    bucket = new std::atomic<uint64_t>[bucket_num];
+    deallocator->initThread();
+    for (size_t i = 0; i < bucket_num ; i++) {
+        node *ptr;
+        ptr = (node *) deallocator->allocate(0);
+        size_t idx = i;
+        ptr->key = idx;
+        ptr->value = 1;
+        bucket[idx].store((uint64_t) ptr);
     }
 
     g_value = 0;
