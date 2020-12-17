@@ -16,3 +16,5 @@ add_subdirectory(Concurrent_componet/HazaPointer)
 add_subdirectory(Cuckoo_improve/libcuckoo_test)
 
 add_subdirectory(Cuckoo_improve/improve_test)
+
+add_executable(tmptest tmptest.cpp tmptest.cpp)

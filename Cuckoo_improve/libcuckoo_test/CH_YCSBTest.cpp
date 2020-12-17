@@ -184,8 +184,8 @@ void *measureWorker(void *args) {
         while (stopMeasure.load(memory_order_relaxed) == 0) {
             for (int i = work->tid * total_count / thread_number;
                  i < (work->tid + 1) * total_count / thread_number; i++) {
-               // switch (static_cast<int>(runs[i]->getOp())) {
-                switch(3){ 
+                switch (static_cast<int>(runs[i]->getOp())) {
+               // switch(3){
 		   case 0: {
 #if WITH_STRING
                         string ret = store->find(string(runs[i]->getKey()));

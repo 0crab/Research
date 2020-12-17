@@ -595,8 +595,11 @@ public:
    */
   template <typename K> mapped_type find(const K &key) const {
     const hash_value hv = hashed_key(key);
-    const auto b = snapshot_and_lock_two<normal_mode>(hv);
-    const table_position pos = cuckoo_find(key, hv.partial, b.i1, b.i2);
+    //const auto b = snapshot_and_lock_two<normal_mode>(hv);
+      const size_type hp = hashpower();
+      const size_type i1 = index_hash(hp, hv.hash);
+      const size_type i2 = alt_index(hp, hv.partial, i1);
+    const table_position pos = cuckoo_find(key, hv.partial, i1, i2);
     if (pos.status == ok) {
       return buckets_[pos.index].mapped(pos.slot);
     } else {
