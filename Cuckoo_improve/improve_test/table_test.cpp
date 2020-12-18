@@ -231,15 +231,19 @@ int main(int argc, char **argv) {
 
         requests[i].key = (char *) calloc(1, 8 * sizeof(char));
         requests[i].key_len = default_key_len;
-        char *&keybuf = requests[i].key;
-        memset(keybuf, '*', default_key_len);
-        sprintf(keybuf, "%d", i);
+        *((size_t * )requests[i].key) = i;
+
+//        char *&keybuf = requests[i].key;
+//        memset(keybuf, '*', default_key_len);
+//        sprintf(keybuf, "%lu", i);
 
         requests[i].value = (char *) calloc(1, 8 * sizeof(char));
         requests[i].value_len = default_value_len;
-        char *&valuebuf = requests[i].value;
-        memset(valuebuf, '@', default_value_len);
-        sprintf(valuebuf, "%d", i);
+        *((size_t * )requests[i].value) = i;
+
+//        char *&valuebuf = requests[i].value;
+//        memset(valuebuf, '@', default_value_len);
+//        sprintf(valuebuf, "%lu", i);
     }
 
     for (size_t i = 0; i < total_count; i++) {
