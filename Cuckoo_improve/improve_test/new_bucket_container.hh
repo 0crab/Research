@@ -49,6 +49,12 @@ public:
 
   size_type size() const { return size_type(1) << hashpower(); }
 
+    void swap(bucket_container &bc) noexcept {
+        size_t bc_hashpower = bc.hashpower();
+        hashpower(bc_hashpower);
+        std::swap(buckets_, bc.buckets_);
+    }
+
 
   bucket &operator[](size_type i) { return buckets_[i]; }
   const bucket &operator[](size_type i) const { return buckets_[i]; }

@@ -15,6 +15,8 @@ constexpr size_t DEFAULT_SLOT_PER_BUCKET = 4;
 constexpr size_t DEFAULT_SIZE =
     (1U << 16) * DEFAULT_SLOT_PER_BUCKET;
 
+constexpr size_t DEFAULT_HASHPOWER = 16;
+
 //! The default minimum load factor that the table allows for automatic
 //! expansion. It must be a number between 0.0 and 1.0. The table will throw
 //! load_factor_too_low if the load factor falls below this value

@@ -346,10 +346,6 @@ private:
   // This needs to be atomic, since it can be read and written by multiple
   // threads not necessarily synchronized by a lock.
   std::atomic<size_type> hashpower_;
-  // These buckets are protected by striped locks (external to the
-  // BucketContainer), which must be obtained before accessing a bucket.
-  bucket_pointer buckets_;
-
   // If the key and value are Trivial, the bucket be serilizable. Since we
   // already disallow user-specialized instances of std::pair, we know that the
   // default implementation of std::pair uses a default copy constructor, so
@@ -369,6 +365,10 @@ private:
              sizeof(bucket) * bc.size());
     return os;
   }
+
+    // These buckets are protected by striped locks (external to the
+    // BucketContainer), which must be obtained before accessing a bucket.
+    bucket_pointer buckets_;
 
   template <typename ThisKey, typename ThisT>
   friend typename std::enable_if<std::is_trivial<ThisKey>::value &&
