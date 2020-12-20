@@ -19,7 +19,8 @@ enum Op_type {
     Set = 1, // Insert_or_Assign
 //    Update = 3,
     Erase = 2,
-    Insert = 3
+    Insert = 3,
+    Rand = 4
 };
 
 
@@ -41,6 +42,8 @@ size_t init_hashpower = 1;
 size_t key_range = 1;
 size_t total_count = 1;
 int timer_range = 0;
+int distribution = 0; // 0 unif; 1 zipf
+Op_type op_chose = Rand;
 
 static size_t find_success, find_failure;
 static size_t insert_success, insert_failure;
@@ -88,43 +91,12 @@ inline void merge_log() {
     __sync_fetch_and_add(&erase_failure, erase_failure_l);
 }
 
-void show_info() {
-    std::cout << " find_success " << find_success << "\tfind_failure " << find_failure << std::endl;
-    std::cout << " insert_success " << insert_success << "\tinsert_failure" << insert_failure << std::endl;
-    std::cout << " set_insert " << set_insert << "\tset_assign " << set_assign << std::endl;
-    std::cout << " update_success " << update_success << "\tupdate_failure " << update_failure << std::endl;
-    std::cout << " erase_success " << erase_success << "\terase_failure " << erase_failure << std::endl;
-
-    uint64_t item_num = store.get_item_num();
-    std::cout << "items in table " << item_num << std::endl;
-
-    std::cout << endl << " op_num " << op_num << std::endl;
-
-    uint64_t runtime = 0;
-    for (int i = 0; i < thread_num; i++) {
-        runtime += runtimelist[i];
-    }
-    runtime /= thread_num;
-    std::cout << " runtime " << runtime << std::endl;
-
-    double throughput = op_num * 1.0 / runtime;
-    std::cout << "***throughput " << throughput << std::endl;
-
-
-    ASSERT(op_num == find_success + find_failure
-                     + set_insert + set_assign
-                     + erase_success + erase_failure, "op_num not correct");
-
-    ASSERT(insert_success + set_insert - erase_success == item_num, "item != inert - erase");
-
-
-}
-
 
 void op_func(const Request &req) {
 
+    Op_type switch_option = op_chose == Rand ? static_cast<Op_type>(rand() % 3) : op_chose ;
 
-    switch (rand() % 3) {
+    switch (switch_option) {
 
         //switch(Find){
         case Find : {
@@ -195,32 +167,33 @@ void worker(int tid) {
     runtimelist[tid] = t.getRunTime();
 }
 
+void show_info_before();
+void show_info_after();
+
 int main(int argc, char **argv) {
-    if (argc == 6) {
+    if (argc == 8) {
         thread_num = std::atol(argv[1]);
         init_hashpower = std::atol(argv[2]);
-        key_range = std::atol(argv[3]);
-        total_count = std::atol(argv[4]);
-        timer_range = std::atol(argv[5]);
+        op_chose = static_cast<Op_type>(std::atol(argv[3]));
+        key_range = std::atol(argv[4]);
+        total_count = std::atol(argv[5]);
+        distribution = std::atol(argv[6]);
+        timer_range = std::atol(argv[7]);
+
     }else{
-        cout<<"./a.out <thread_num> <init_hashpower> <key_range> <total_count> <timer_range>"<<endl;
+        cout<<"./a.out <thread_num>  <init_hashpower> <op_chose> <key_range>"
+                                "<total_count> <distribution> <timer_range>"<<endl;
+        cout<<"op_chose    :0-Find,1-Set,2-Erase,3-Insert,4-Rand "<<endl;
+        cout<<"distribution:0-unif,1-zipf"<<endl;
         exit(-1);
     }
 
-    std::cout << " thread_num " << thread_num
-              << " init_hashpower "<<init_hashpower
-              << " key_range " << key_range
-              << " total_count " << total_count
-              << " timer_range " << timer_range << std::endl;
+    show_info_before();
 
     {
         new_cuckoohash_map tmp(init_hashpower);
         store.swap(tmp);
     }
-    std::cout << "bucket hashpower:" << store.hashpower()<< std::endl;
-    uint64_t total_slot_num = 4 * (1 << init_hashpower);
-    std::cout <<"total_slot_num " << total_slot_num <<std::endl;
-
 
     srand((unsigned) time(NULL));
     //init_req
@@ -233,17 +206,10 @@ int main(int argc, char **argv) {
         requests[i].key_len = default_key_len;
         *((size_t * )requests[i].key) = i;
 
-//        char *&keybuf = requests[i].key;
-//        memset(keybuf, '*', default_key_len);
-//        sprintf(keybuf, "%lu", i);
-
         requests[i].value = (char *) calloc(1, 8 * sizeof(char));
         requests[i].value_len = default_value_len;
         *((size_t * )requests[i].value) = i;
 
-//        char *&valuebuf = requests[i].value;
-//        memset(valuebuf, '@', default_value_len);
-//        sprintf(valuebuf, "%lu", i);
     }
 
     for (size_t i = 0; i < total_count; i++) {
@@ -255,7 +221,7 @@ int main(int argc, char **argv) {
         }
     }
 
-    cout << "pre insert finish" << endl;
+    cout << ">>>>>pre insert finish" << endl;
 
     runtimelist = new uint64_t[thread_num]();
 
@@ -263,7 +229,67 @@ int main(int argc, char **argv) {
     for (int i = 0; i < thread_num; i++) threads.emplace_back(std::thread(worker, i));
     for (int i = 0; i < thread_num; i++) threads[i].join();
 
-    show_info();
+    show_info_after();
+
+}
+
+void show_info_before(){
+    string op_chose_str;
+    switch (op_chose) {
+        case Find: op_chose_str = "Find";break;
+        case Set: op_chose_str = "Set";break;
+        case Erase: op_chose_str = "Erase";break;
+        case Insert: op_chose_str = "Insert";break;
+        case Rand: op_chose_str = "Rand";break;
+        default: ASSERT(false,"op_chose not defined");
+    }
+
+    ASSERT(distribution == 0 || distribution == 1,"distribution not defined");
+    string distribution_str = distribution == 0 ? "uinf" : "zipf";
+
+    std::cout << " thread_num " << thread_num
+              << " init_hashpower "<<init_hashpower
+              << " op_chose "<<op_chose_str
+              << " key_range " << key_range
+              << " total_count " << total_count
+              << " distribution " << distribution_str
+              << " timer_range " << timer_range << std::endl;
+
+    std::cout << "bucket hashpower:" << store.hashpower()<< std::endl;
+    uint64_t total_slot_num = 4 * (1ull << init_hashpower);
+    std::cout <<"total_slot_num " << total_slot_num <<std::endl;
+}
+
+void show_info_after() {
+    std::cout << " find_success " << find_success << "\tfind_failure " << find_failure << std::endl;
+    std::cout << " insert_success " << insert_success << "\tinsert_failure " << insert_failure << std::endl;
+    std::cout << " set_insert " << set_insert << "\tset_assign " << set_assign << std::endl;
+    std::cout << " update_success " << update_success << "\tupdate_failure " << update_failure << std::endl;
+    std::cout << " erase_success " << erase_success << "\terase_failure " << erase_failure << std::endl;
+
+    uint64_t item_num = store.get_item_num();
+    std::cout << "items in table " << item_num << std::endl;
+
+    std::cout << endl << " op_num " << op_num << std::endl;
+
+    uint64_t runtime = 0;
+    for (int i = 0; i < thread_num; i++) {
+        runtime += runtimelist[i];
+    }
+    runtime /= thread_num;
+    std::cout << " runtime " << runtime << std::endl;
+
+    double throughput = op_num * 1.0 / runtime;
+    std::cout << "***throughput " << throughput << std::endl;
+
+
+    ASSERT(op_num == find_success + find_failure
+                     + set_insert + set_assign
+                     + erase_success + erase_failure
+                     + insert_success + insert_failure - total_count, "op_num not correct");
+
+    ASSERT(insert_success + set_insert - erase_success == item_num, "item != inert - erase");
+
 
 }
 
