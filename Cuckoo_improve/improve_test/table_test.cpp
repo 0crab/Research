@@ -53,15 +53,21 @@ static size_t insert_success, insert_failure;
 static size_t set_insert, set_assign;
 static size_t update_success, update_failure;
 static size_t erase_success, erase_failure;
-static size_t kick_num;
-
+static size_t kick_num,
+                depth0, // ready to kick, then find empty slot
+                kick_lock_failure_data_check,
+                kick_lock_failure_haza_check,
+                kick_lock_failure_other_lock,
+                kick_lock_failure_haza_check_after,
+                kick_lock_failure_data_check_after,
+                key_duplicated_after_kick;
+size_t kick_path_length_log[5];
 
 thread_local static size_t find_success_l, find_failure_l;
 thread_local static size_t insert_success_l, insert_failure_l;
 thread_local static size_t set_insert_l, set_assign_l;
 thread_local static size_t update_success_l, update_failure_l;
 thread_local static size_t erase_success_l, erase_failure_l;
-
 
 uint64_t *runtimelist;
 uint64_t op_num;
@@ -190,7 +196,21 @@ void insert_worker(int tid){
         }
     }
 
+
     __sync_fetch_and_add(&kick_num, kick_num_l);
+    __sync_fetch_and_add(&depth0,depth0_l);
+    __sync_fetch_and_add(&kick_lock_failure_data_check,kick_lock_failure_haza_check_l);
+    __sync_fetch_and_add(&kick_lock_failure_haza_check,kick_lock_failure_haza_check_l);
+    __sync_fetch_and_add(&kick_lock_failure_other_lock,kick_lock_failure_other_lock_l);
+    __sync_fetch_and_add(&kick_lock_failure_haza_check_after,kick_lock_failure_haza_check_after_l);
+    __sync_fetch_and_add(&kick_lock_failure_data_check_after,kick_lock_failure_data_check_after_l);
+    __sync_fetch_and_add(&key_duplicated_after_kick,key_duplicated_after_kick_l);
+
+    for(int i = 0; i < 6 ;i++){
+        __sync_fetch_and_add(&kick_path_length_log[i],kick_path_length_log_l[i]);
+    }
+
+
     __sync_fetch_and_add(&insert_success, insert_success_l);
     __sync_fetch_and_add(&insert_failure, insert_failure_l);
 
@@ -288,6 +308,17 @@ int main(int argc, char **argv) {
     for (int i = 0; i < insert_thread_num; i++) insert_threads[i].join();
 
     cout << ">>>>>pre insert finish" <<"\tinsert_success: "<<insert_success<<"\tkick_num: "<<kick_num<< endl;
+    cout<<"depth0 "<<depth0<<endl;
+    cout<<"kick_lock_failure_data_check "<<kick_lock_failure_data_check<<endl;
+    cout<<"kick_lock_failure_haza_check "<<kick_lock_failure_haza_check<<endl;
+    cout<<"kick_lock_failure_other_lock "<<kick_lock_failure_other_lock<<endl;
+    cout<<"kick_lock_failure_haza_check_after "<<kick_lock_failure_haza_check_after<<endl;
+    cout<<"kick_lock_failure_data_check_after "<<kick_lock_failure_data_check_after<<endl;
+    cout<<"key_duplicated_after_kick "<<key_duplicated_after_kick<<endl;
+    cout<<"path length log:  ";
+    for(int i = 0; i < 6;i++ )  cout<<" "<<i<<":"<<kick_path_length_log[i]<<" ";
+    cout<<endl;
+    cout<< "   ------------  "<<endl;
     ASSERT(store.check_unique(),"key not unique!");
 
     runtimelist = new uint64_t[thread_num]();

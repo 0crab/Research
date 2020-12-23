@@ -20,7 +20,17 @@ namespace libcuckoo {
 
     thread_local int thread_id;
 
-    thread_local size_t kick_num_l;
+    //thread_local size_t kick_num_l;
+
+    thread_local size_t kick_num_l,
+                        depth0_l, // ready to kick, then find empty slot
+                        kick_lock_failure_data_check_l,
+                        kick_lock_failure_haza_check_l,
+                        kick_lock_failure_other_lock_l,
+                        kick_lock_failure_haza_check_after_l,
+                        kick_lock_failure_data_check_after_l,
+                        key_duplicated_after_kick_l;
+    thread_local size_t kick_path_length_log_l[6];
 
     class new_cuckoohash_map {
     private:
@@ -312,17 +322,32 @@ namespace libcuckoo {
                 uint64_t ptr2 = get_ptr(par_ptr_2);
 
                 //if both have value or kick_locked  return false
-                if(par_ptr_1 != (uint64_t) nullptr && par_ptr_2 != (uint64_t) nullptr)
+                if(par_ptr_1 != (uint64_t) nullptr && par_ptr_2 != (uint64_t) nullptr){
+                    kick_lock_failure_data_check_l++;
                     return false;
+                }
+
 
                 //repeat unitl no target conflict
                 //TODO using partial to tag only, may cause unnecessary conflict. Should use bucket-par unite tag
-                if(par_ptr_1 != 0 && kickHazaManager.inquiry_is_registerd(get_partial(par_ptr_1))) continue;
-                if(par_ptr_2 != 0 && kickHazaManager.inquiry_is_registerd(get_partial(par_ptr_2))) continue;
+                if(par_ptr_1 != 0 && kickHazaManager.inquiry_is_registerd(get_partial(par_ptr_1))){
+                    kick_lock_failure_haza_check_l++;
+                    continue;
+                }
+                if(par_ptr_2 != 0 && kickHazaManager.inquiry_is_registerd(get_partial(par_ptr_2))){
+                    kick_lock_failure_haza_check_l++;
+                    continue;
+                }
 
                 //repeat when lock faiure
-                if(!try_kick_lock_par_ptr(atomic_par_ptr_1)) continue;
-                if(!try_kick_lock_par_ptr(atomic_par_ptr_2)) continue;
+                if(!try_kick_lock_par_ptr(atomic_par_ptr_1)) {
+                    kick_lock_failure_other_lock_l++;
+                    continue;
+                }
+                if(!try_kick_lock_par_ptr(atomic_par_ptr_2)) {
+                    kick_lock_failure_other_lock_l++;
+                    continue;
+                }
 
 
                 //check again to prevent that reader come between the first check and kick lock and finish
@@ -331,6 +356,7 @@ namespace libcuckoo {
                     ||par_ptr_2 != 0 && kickHazaManager.inquiry_is_registerd(get_partial(par_ptr_2))) {
                     kick_unlock_par_ptr(atomic_par_ptr_1);
                     kick_unlock_par_ptr(atomic_par_ptr_2);
+                    kick_lock_failure_haza_check_after_l++;
                     continue;
                 }
 
@@ -679,6 +705,7 @@ namespace libcuckoo {
                 // cuckoopath_search found empty isn't empty anymore, we unlock them
                 // and return false. Otherwise, the bucket is empty and insertable,
                 // so we hold the locks and return true.
+                depth0_l++;
                 const size_type bucket_i = cuckoo_path[0].bucket;
                 assert(bucket_i == b.i1 || bucket_i == b.i2);
                 //b = lock_two(hp, b.i1, b.i2, TABLE_MODE());
@@ -730,6 +757,7 @@ namespace libcuckoo {
                 bool c = hashed_key(ITEM_KEY(from_ptr),ITEM_KEY_LEN(from_ptr)).hash != from.hv.hash;
                 if (a||b||c){
                         kick_unlok_two(from.bucket,from.slot,to.bucket,to.slot);
+                        kick_lock_failure_data_check_after_l++;
                         return false;
                 }
 
@@ -764,6 +792,7 @@ namespace libcuckoo {
                     const int depth =
                             cuckoopath_search(hp, cuckoo_path, b.i1, b.i2);
 
+                    kick_path_length_log_l[depth]++;
                     if (depth < 0) {
                         break;
                     }
