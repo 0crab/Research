@@ -27,6 +27,9 @@ public:
         for (int i = 0; i < SLOT_PER_BUCKET; i++) values_[i].store((uint64_t)nullptr);
     }
 
+    //TODO can't define under kick lock is occpupied or not
+//    inline bool occupied(size_type ind){return values_[ind].load() != (uint64_t) nullptr;}
+
   //private:
     friend class bucket_container;
 
@@ -49,11 +52,11 @@ public:
 
   size_type size() const { return size_type(1) << hashpower(); }
 
-    void swap(bucket_container &bc) noexcept {
-        size_t bc_hashpower = bc.hashpower();
-        hashpower(bc_hashpower);
-        std::swap(buckets_, bc.buckets_);
-    }
+  void swap(bucket_container &bc) noexcept {
+    size_t bc_hashpower = bc.hashpower();
+    hashpower(bc_hashpower);
+    std::swap(buckets_, bc.buckets_);
+  }
 
 
   bucket &operator[](size_type i) { return buckets_[i]; }
@@ -67,10 +70,10 @@ public:
         return b.values_[slot].compare_exchange_strong(old,insert_ptr);
   }
 
-  bool try_updateKV(size_type ind, size_type slot, uint64_t update_ptr) {
+  bool try_updateKV(size_type ind, size_type slot,uint64_t old_ptr,uint64_t update_ptr) {
         bucket &b = buckets_[ind];
         uint64_t old = b.values_[slot].load();
-        if(old != update_ptr) return false;
+        if(old != old_ptr) return false;
         return b.values_[slot].compare_exchange_strong(old,update_ptr);
   }
 
@@ -79,6 +82,13 @@ public:
         uint64_t old = b.values_[slot].load();
         if(old != erase_ptr) return false;
         return b.values_[slot].compare_exchange_strong(old,(uint64_t) nullptr);
+  }
+
+  //only for kick
+  //par_ptr holding kick lock
+  void set_ptr(size_type ind, size_type slot,uint64_t par_ptr){
+      bucket &b = buckets_[ind];
+      b.values_[slot].store(par_ptr);
   }
 
   uint64_t get_item_num(){

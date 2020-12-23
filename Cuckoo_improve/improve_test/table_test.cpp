@@ -3,6 +3,8 @@
 #include <vector>
 #include <mutex>
 #include <atomic>
+#include <unordered_set>
+#include "generator.h"
 #include "tracer.h"
 #include "item.h"
 
@@ -38,6 +40,7 @@ typedef struct Request {
 Request *requests;
 
 int thread_num = 1;
+int insert_thread_num = 1;
 size_t init_hashpower = 1;
 size_t key_range = 1;
 size_t total_count = 1;
@@ -50,6 +53,8 @@ static size_t insert_success, insert_failure;
 static size_t set_insert, set_assign;
 static size_t update_success, update_failure;
 static size_t erase_success, erase_failure;
+static size_t kick_num;
+
 
 thread_local static size_t find_success_l, find_failure_l;
 thread_local static size_t insert_success_l, insert_failure_l;
@@ -78,6 +83,29 @@ struct table_position {
     cuckoo_status status;
 };
 
+
+template<typename R>
+class RandomGenerator {
+public:
+    static inline void generate(R *array, size_t range, size_t count, double skew = 0.0) {
+        struct stat buffer;
+        if (skew < zipf_distribution<R>::epsilon) {
+            std::default_random_engine engine(
+                    static_cast<R>(chrono::steady_clock::now().time_since_epoch().count()));
+            std::uniform_int_distribution<size_t> dis(0, range + FUZZY_BOUND);
+            for (size_t i = 0; i < count; i++) {
+                array[i] = static_cast<R>(dis(engine));
+            }
+        } else {
+            zipf_distribution<R> engine(range, skew);
+            mt19937 mt;
+            for (size_t i = 0; i < count; i++) {
+                array[i] = engine(mt);
+            }
+        }
+    }
+};
+
 inline void merge_log() {
     __sync_fetch_and_add(&find_success, find_success_l);
     __sync_fetch_and_add(&find_failure, find_failure_l);
@@ -94,7 +122,7 @@ inline void merge_log() {
 
 void op_func(const Request &req) {
 
-    Op_type switch_option = op_chose == Rand ? static_cast<Op_type>(rand() % 3) : op_chose ;
+    Op_type switch_option = op_chose == Rand ? static_cast<Op_type>(rand() % 3) : op_chose;
 
     switch (switch_option) {
 
@@ -146,7 +174,32 @@ void op_func(const Request &req) {
 
 }
 
+
+void insert_worker(int tid){
+
+    //Prevent tail debris
+    size_t step =  total_count / insert_thread_num;
+    size_t num = tid == insert_thread_num -1 ?  step + total_count % insert_thread_num : step;
+
+    for (size_t i = 0; i < num ; i++) {
+        auto &req = requests[tid * step + i];
+        if (store.insert(req.key, req.key_len, req.value, req.value_len)) {
+            insert_success_l++;
+        } else {
+            insert_failure_l++;
+        }
+    }
+
+    __sync_fetch_and_add(&kick_num, kick_num_l);
+    __sync_fetch_and_add(&insert_success, insert_success_l);
+    __sync_fetch_and_add(&insert_failure, insert_failure_l);
+
+
+
+}
+
 void worker(int tid) {
+    thread_id = tid;
 
     Tracer t;
     t.startTime();
@@ -167,33 +220,16 @@ void worker(int tid) {
     runtimelist[tid] = t.getRunTime();
 }
 
-void show_info_before();
-void show_info_after();
 
-int main(int argc, char **argv) {
-    if (argc == 8) {
-        thread_num = std::atol(argv[1]);
-        init_hashpower = std::atol(argv[2]);
-        op_chose = static_cast<Op_type>(std::atol(argv[3]));
-        key_range = std::atol(argv[4]);
-        total_count = std::atol(argv[5]);
-        distribution = std::atol(argv[6]);
-        timer_range = std::atol(argv[7]);
 
-    }else{
-        cout<<"./a.out <thread_num>  <init_hashpower> <op_chose> <key_range>"
-                                "<total_count> <distribution> <timer_range>"<<endl;
-        cout<<"op_chose    :0-Find,1-Set,2-Erase,3-Insert,4-Rand "<<endl;
-        cout<<"distribution:0-unif,1-zipf"<<endl;
-        exit(-1);
-    }
 
-    show_info_before();
 
-    {
-        new_cuckoohash_map tmp(init_hashpower);
-        store.swap(tmp);
-    }
+void prepare(){
+
+    double skew = distribution == 0? 0.0:0.5;
+
+    uint64_t *loads = new uint64_t[total_count]();
+    RandomGenerator<uint64_t>::generate(loads,key_range,total_count,skew);
 
     srand((unsigned) time(NULL));
     //init_req
@@ -204,24 +240,55 @@ int main(int argc, char **argv) {
 
         requests[i].key = (char *) calloc(1, 8 * sizeof(char));
         requests[i].key_len = default_key_len;
-        *((size_t * )requests[i].key) = i;
+        *((size_t *) requests[i].key) = loads[i];
 
         requests[i].value = (char *) calloc(1, 8 * sizeof(char));
         requests[i].value_len = default_value_len;
-        *((size_t * )requests[i].value) = i;
+        *((size_t *) requests[i].value) = loads[i];
 
     }
 
-    for (size_t i = 0; i < total_count; i++) {
-        auto &req = requests[i];
-        if (store.insert(req.key, req.key_len, req.value, req.value_len)) {
-            insert_success++;
-        } else {
-            insert_failure++;
-        }
+    delete[] loads;
+}
+
+bool check_unique();
+void show_info_before();
+void show_info_after();
+void prepare();
+
+int main(int argc, char **argv) {
+    if (argc == 9) {
+        thread_num = std::atol(argv[1]);
+        insert_thread_num = std::atol(argv[2]);
+        init_hashpower = std::atol(argv[3]);
+        op_chose = static_cast<Op_type>(std::atol(argv[4]));
+        key_range = std::atol(argv[5]);
+        total_count = std::atol(argv[6]);
+        distribution = std::atol(argv[7]);
+        timer_range = std::atol(argv[8]);
+    } else {
+        cout << "./a.out <thread_num> <insert_thread_num> <init_hashpower> <op_chose> <key_range>"
+                "<total_count> <distribution> <timer_range>" << endl;
+        cout << "op_chose    :0-Find,1-Set,2-Erase,3-Insert,4-Rand " << endl;
+        cout << "distribution:0-unif,1-zipf" << endl;
+        exit(-1);
     }
 
-    cout << ">>>>>pre insert finish" << endl;
+    show_info_before();
+
+    {
+        new_cuckoohash_map tmp(init_hashpower);
+        store.swap(tmp);
+    }
+
+    prepare();
+
+    std::vector<std::thread> insert_threads;
+    for (int i = 0; i < insert_thread_num; i++) insert_threads.emplace_back(std::thread(insert_worker, i));
+    for (int i = 0; i < insert_thread_num; i++) insert_threads[i].join();
+
+    cout << ">>>>>pre insert finish" <<"\tinsert_success: "<<insert_success<<"\tkick_num: "<<kick_num<< endl;
+    ASSERT(store.check_unique(),"key not unique!");
 
     runtimelist = new uint64_t[thread_num]();
 
@@ -229,38 +296,52 @@ int main(int argc, char **argv) {
     for (int i = 0; i < thread_num; i++) threads.emplace_back(std::thread(worker, i));
     for (int i = 0; i < thread_num; i++) threads[i].join();
 
+    ASSERT(store.check_unique(),"key not unique!");
+
     show_info_after();
 
 }
 
-void show_info_before(){
+
+void show_info_before() {
     string op_chose_str;
     switch (op_chose) {
-        case Find: op_chose_str = "Find";break;
-        case Set: op_chose_str = "Set";break;
-        case Erase: op_chose_str = "Erase";break;
-        case Insert: op_chose_str = "Insert";break;
-        case Rand: op_chose_str = "Rand";break;
-        default: ASSERT(false,"op_chose not defined");
+        case Find:
+            op_chose_str = "Find";
+            break;
+        case Set:
+            op_chose_str = "Set";
+            break;
+        case Erase:
+            op_chose_str = "Erase";
+            break;
+        case Insert:
+            op_chose_str = "Insert";
+            break;
+        case Rand:
+            op_chose_str = "Rand";
+            break;
+        default:
+            ASSERT(false, "op_chose not defined");
     }
 
-    ASSERT(distribution == 0 || distribution == 1,"distribution not defined");
+    ASSERT(distribution == 0 || distribution == 1, "distribution not defined");
     string distribution_str = distribution == 0 ? "uinf" : "zipf";
 
     std::cout << " thread_num " << thread_num
-              << " init_hashpower "<<init_hashpower
-              << " op_chose "<<op_chose_str
+              << " init_hashpower " << init_hashpower
+              << " op_chose " << op_chose_str
               << " key_range " << key_range
               << " total_count " << total_count
               << " distribution " << distribution_str
               << " timer_range " << timer_range << std::endl;
 
-    std::cout << "bucket hashpower:" << store.hashpower()<< std::endl;
     uint64_t total_slot_num = 4 * (1ull << init_hashpower);
-    std::cout <<"total_slot_num " << total_slot_num <<std::endl;
+    std::cout << "total_slot_num " << total_slot_num << std::endl;
 }
 
 void show_info_after() {
+
     std::cout << " find_success " << find_success << "\tfind_failure " << find_failure << std::endl;
     std::cout << " insert_success " << insert_success << "\tinsert_failure " << insert_failure << std::endl;
     std::cout << " set_insert " << set_insert << "\tset_assign " << set_assign << std::endl;
@@ -292,5 +373,4 @@ void show_info_after() {
 
 
 }
-
 
