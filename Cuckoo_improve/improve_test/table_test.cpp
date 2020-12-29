@@ -307,6 +307,7 @@ int main(int argc, char **argv) {
     show_info_insert();
 
     ASSERT(store.check_unique(),"key not unique!");
+    ASSERT(store.check_nolock(),"there are still locks in map!");
 
     runtimelist = new uint64_t[thread_num]();
 
@@ -315,6 +316,7 @@ int main(int argc, char **argv) {
     for (int i = 0; i < thread_num; i++) threads[i].join();
 
     ASSERT(store.check_unique(),"key not unique!");
+    ASSERT(store.check_nolock(),"there are still locks in map!");
 
     show_info_after();
 

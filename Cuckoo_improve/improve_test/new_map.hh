@@ -177,6 +177,22 @@ namespace libcuckoo {
             return true;
         }
 
+        bool check_nolock(){
+            size_type hp  = hashpower();
+            size_t a = bucket_num();
+            for(size_t i = 0 ;i < bucket_num(); i++){
+                for(size_t j = 0; j < SLOT_PER_BUCKET;j ++){
+                    uint64_t par_ptr =  buckets_[i].values_[j].load();
+                    if( par_ptr != (uint64_t)nullptr){
+                        size_t tmp = par_ptr & ~partial_mask & ~ptr_mask;
+                        if(tmp != 0ull)
+                            return false;
+                    }
+                }
+            }
+            return true;
+        }
+
         bool unique_in_two_bucket(size_type i1,size_type slot_ind,size_type i2){
             uint64_t par_ptr =  buckets_[i1].values_[slot_ind].load();
             partial_t par = get_partial(par_ptr);
