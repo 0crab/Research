@@ -35,7 +35,6 @@ namespace libcuckoo {
     class new_cuckoohash_map {
     private:
 
-
         static const uint32_t kHashSeed = 7079;
 
         static uint64_t MurmurHash64A(const void *key, size_t len) {
@@ -308,9 +307,21 @@ namespace libcuckoo {
             atomic<uint64_t> & atomic_par_ptr_2 =  buckets_[b2].values_[s2];
 
             //LOOP CONTROL
+
             size_t loop_count = 0;
+
             while(true){
+
                 loop_count++;
+
+                if (loop_count >= 1000000 ){
+                    cout<<"MAYBE DEAD LOOP !!!!!!!!!!!!!!!!!!!!!"<<endl;
+                    cout<<"kick_lock_failure_data_check "<<kick_lock_failure_data_check_l<<endl;
+                    cout<<"kick_lock_failure_haza_check "<<kick_lock_failure_haza_check_l<<endl;
+                    cout<<"kick_lock_failure_other_lock "<<kick_lock_failure_other_lock_l<<endl;
+                    cout<<"kick_lock_failure_haza_check_after "<<kick_lock_failure_haza_check_after_l<<endl;
+                    cout<<"kick_lock_failure_data_check_after "<<kick_lock_failure_data_check_after_l<<endl;
+                }
                 ASSERT(loop_count<1000000,"MAYBE DEAD LOOP");
 
 
@@ -330,6 +341,8 @@ namespace libcuckoo {
 
                 //repeat unitl no target conflict
                 //TODO using partial to tag only, may cause unnecessary conflict. Should use bucket-par unite tag
+                //TODO return the position information using parameter.Keep loading the position until
+                // it is released by other thread
                 if(par_ptr_1 != 0 && kickHazaManager.inquiry_is_registerd(get_partial(par_ptr_1))){
                     kick_lock_failure_haza_check_l++;
                     continue;
