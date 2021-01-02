@@ -375,6 +375,7 @@ namespace libcuckoo {
                 }
                 if(!try_kick_lock_par_ptr(atomic_par_ptr_2)) {
                     kick_lock_failure_other_lock_l++;
+                    kick_unlock_par_ptr(atomic_par_ptr_1);
                     continue;
                 }
 
@@ -393,6 +394,8 @@ namespace libcuckoo {
             }
 
         }
+
+
 
         //we dont care unlock order
         void kick_unlok_two(size_type b1,size_type s1,size_type b2,size_type s2){
@@ -433,7 +436,8 @@ namespace libcuckoo {
         inline void kick_unlock_par_ptr(atomic<uint64_t> & atomic_par_ptr){
             uint64_t par_ptr = atomic_par_ptr.load();
             ASSERT(is_kick_locked(par_ptr),"try kick unlock an unlocked par_ptr ");
-            atomic_par_ptr.compare_exchange_strong(par_ptr, par_ptr & ~kick_lock_mask);
+            bool res = atomic_par_ptr.compare_exchange_strong(par_ptr, par_ptr & ~kick_lock_mask);
+            ASSERT(res,"unlock failure")
         }
 
         int try_read_from_bucket(const bucket &b, const partial_t partial,

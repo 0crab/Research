@@ -242,7 +242,7 @@ void worker(int tid) {
 
 void prepare(){
 
-    double skew = distribution == 0? 0.0:0.5;
+    double skew = distribution == 0? 0.0:0.99;
 
     uint64_t *loads = new uint64_t[total_count]();
     RandomGenerator<uint64_t>::generate(loads,key_range,total_count,skew);
