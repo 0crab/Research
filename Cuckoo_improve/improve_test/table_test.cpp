@@ -223,6 +223,7 @@ void worker(int tid) {
     t.startTime();
 
     while (stopMeasure.load(std::memory_order_relaxed) == 0) {
+
         for (size_t i = 0; i < total_count; i++) {
             op_func(requests[i]);
         }

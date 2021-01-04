@@ -14,17 +14,20 @@
 
 namespace libcuckoo {
 
-template <std::size_t SLOT_PER_BUCKET>
+    static const int ATOMIC_ALIGN_RATIO = 2;
 
+template <std::size_t SLOT_PER_BUCKET>
 class bucket_container {
 public:
+
+
     using size_type =size_t;
 public:
 
   class bucket {
   public:
     bucket() {
-        for (int i = 0; i < SLOT_PER_BUCKET; i++) values_[i].store((uint64_t)nullptr);
+        for (int i = 0; i < SLOT_PER_BUCKET * ATOMIC_ALIGN_RATIO; i++) values_[i].store((uint64_t)nullptr);
     }
 
     //TODO can't define under kick lock is occpupied or not
@@ -34,7 +37,8 @@ public:
     friend class bucket_container;
 
     //TODO align
-    std::array<std::atomic<uint64_t>,SLOT_PER_BUCKET> values_;
+
+    std::array<std::atomic<uint64_t>,SLOT_PER_BUCKET * ATOMIC_ALIGN_RATIO> values_;
 
   };
 
@@ -62,33 +66,47 @@ public:
   bucket &operator[](size_type i) { return buckets_[i]; }
   const bucket &operator[](size_type i) const { return buckets_[i]; }
 
+
+  inline size_type read_from_slot(const bucket &b,size_type slot){
+      return b.values_[slot * ATOMIC_ALIGN_RATIO].load();
+  }
+
+  inline size_type read_from_bucket_slot(size_type ind,size_type slot){
+      return buckets_[ind].values_[slot * ATOMIC_ALIGN_RATIO].load();
+  }
+
+  inline atomic<size_t> & get_atomic_par_ptr(size_type ind,size_type slot){
+      return buckets_[ind].values_[slot * ATOMIC_ALIGN_RATIO];
+  }
+
+
   // ptr has been packaged with partial
   bool try_insertKV(size_type ind, size_type slot, uint64_t insert_ptr) {
         bucket &b = buckets_[ind];
-        uint64_t old = b.values_[slot].load();
+        uint64_t old = b.values_[slot * ATOMIC_ALIGN_RATIO].load();
         if(old != (uint64_t)nullptr) return false;
-        return b.values_[slot].compare_exchange_strong(old,insert_ptr);
+        return b.values_[slot * ATOMIC_ALIGN_RATIO].compare_exchange_strong(old,insert_ptr);
   }
 
   bool try_updateKV(size_type ind, size_type slot,uint64_t old_ptr,uint64_t update_ptr) {
         bucket &b = buckets_[ind];
-        uint64_t old = b.values_[slot].load();
+        uint64_t old = b.values_[slot * ATOMIC_ALIGN_RATIO].load();
         if(old != old_ptr) return false;
-        return b.values_[slot].compare_exchange_strong(old,update_ptr);
+        return b.values_[slot * ATOMIC_ALIGN_RATIO].compare_exchange_strong(old,update_ptr);
   }
 
   bool try_eraseKV(size_type ind, size_type slot,uint64_t erase_ptr) {
         bucket &b = buckets_[ind];
-        uint64_t old = b.values_[slot].load();
+        uint64_t old = b.values_[slot * ATOMIC_ALIGN_RATIO].load();
         if(old != erase_ptr) return false;
-        return b.values_[slot].compare_exchange_strong(old,(uint64_t) nullptr);
+        return b.values_[slot * ATOMIC_ALIGN_RATIO].compare_exchange_strong(old,(uint64_t) nullptr);
   }
 
   //only for kick
   //par_ptr holding kick lock
   void set_ptr(size_type ind, size_type slot,uint64_t par_ptr){
       bucket &b = buckets_[ind];
-      b.values_[slot].store(par_ptr);
+      b.values_[slot * ATOMIC_ALIGN_RATIO].store(par_ptr);
   }
 
   uint64_t get_item_num(){
@@ -97,7 +115,7 @@ public:
       for(size_t i = 0; i < size(); i++ ){
            bucket &b = buckets_[i];
            for(int j =0; j< SLOT_PER_BUCKET;j++){
-               if(b.values_[j].load() != (uint64_t) nullptr) count++;
+               if(b.values_[j * ATOMIC_ALIGN_RATIO].load() != (uint64_t) nullptr) count++;
            }
       }
       table_mtx.unlock();

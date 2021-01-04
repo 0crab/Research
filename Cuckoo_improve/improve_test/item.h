@@ -10,13 +10,13 @@
 
 
 struct Item{
-    uint16_t key_len;
-    uint16_t value_len;
+    uint32_t key_len;
+    uint32_t value_len;
     char buf[];
 };
 
 Item * allocate_item(char * key,size_t key_len,char * value,size_t value_len){
-    Item * p = (Item * )malloc(key_len + value_len+sizeof (uint16_t) + sizeof (uint16_t));
+    Item * p = (Item * )malloc(key_len + value_len + 2 * sizeof(uint32_t));
     ASSERT(p!= nullptr,"malloc failure");
     p->key_len = key_len;
     p->value_len = value_len;

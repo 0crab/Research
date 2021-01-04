@@ -1,4 +1,3 @@
-
 #include <cstring>
 #include "new_bucket_container.hh"
 #include "cuckoohash_config.hh"
@@ -163,7 +162,7 @@ namespace libcuckoo {
             size_t a = bucket_num();
             for(size_t i = 0 ;i < bucket_num(); i++){
                 for(size_t j = 0; j < SLOT_PER_BUCKET;j ++){
-                    uint64_t par_ptr =  buckets_[i].values_[j].load();
+                    uint64_t par_ptr = buckets_.read_from_bucket_slot(i,j);
                     if( par_ptr != (uint64_t)nullptr){
                         partial_t par = get_partial(par_ptr);
                         uint64_t ptr = get_ptr(par_ptr);
@@ -182,7 +181,7 @@ namespace libcuckoo {
             size_t a = bucket_num();
             for(size_t i = 0 ;i < bucket_num(); i++){
                 for(size_t j = 0; j < SLOT_PER_BUCKET;j ++){
-                    uint64_t par_ptr =  buckets_[i].values_[j].load();
+                    uint64_t par_ptr = buckets_.read_from_bucket_slot(i,j);
                     if( par_ptr != (uint64_t)nullptr){
                         size_t tmp = par_ptr & ~partial_mask & ~ptr_mask;
                         if(tmp != 0ull)
@@ -194,12 +193,12 @@ namespace libcuckoo {
         }
 
         bool unique_in_two_bucket(size_type i1,size_type slot_ind,size_type i2){
-            uint64_t par_ptr =  buckets_[i1].values_[slot_ind].load();
+            uint64_t par_ptr =  buckets_.read_from_bucket_slot(i1,slot_ind);
             partial_t par = get_partial(par_ptr);
             uint64_t ptr = get_ptr(par_ptr);
             for(int i = 0 ; i < SLOT_PER_BUCKET;i++){
                 if(i == slot_ind) continue;
-                uint64_t com_par_ptr = buckets_[i1].values_[i].load();
+                uint64_t com_par_ptr = buckets_.read_from_bucket_slot(i1,i);
                 if(com_par_ptr == (uint64_t) nullptr) continue;
                 partial_t com_par = get_partial(com_par_ptr);
                 uint64_t com_ptr = get_ptr(com_par_ptr);
@@ -211,7 +210,7 @@ namespace libcuckoo {
                 }
             }
             for(int i = 0 ; i < SLOT_PER_BUCKET;i++){
-                uint64_t com_par_ptr = buckets_[i2].values_[i].load();
+                uint64_t com_par_ptr = buckets_.read_from_bucket_slot(i2,i);
                 if(com_par_ptr == (uint64_t) nullptr) continue;
                 partial_t com_par = get_partial(com_par_ptr);
                 uint64_t com_ptr = get_ptr(com_par_ptr);
@@ -319,8 +318,8 @@ namespace libcuckoo {
 
             //ensure we lock the lower index firstly
             if(b1 > b1) std::swap(b1,b2);
-            atomic<uint64_t> & atomic_par_ptr_1 =  buckets_[b1].values_[s1];
-            atomic<uint64_t> & atomic_par_ptr_2 =  buckets_[b2].values_[s2];
+            atomic<uint64_t> & atomic_par_ptr_1 = buckets_.get_atomic_par_ptr(b1,s1);
+            atomic<uint64_t> & atomic_par_ptr_2 = buckets_.get_atomic_par_ptr(b2,s2);
 
             //LOOP CONTROL
 
@@ -399,8 +398,8 @@ namespace libcuckoo {
 
         //we dont care unlock order
         void kick_unlok_two(size_type b1,size_type s1,size_type b2,size_type s2){
-            kick_unlock_par_ptr(buckets_[b1].values_[s1]);
-            kick_unlock_par_ptr(buckets_[b2].values_[s2]);
+            kick_unlock_par_ptr(buckets_[b1].values_[s1 * ATOMIC_ALIGN_RATIO]);
+            kick_unlock_par_ptr(buckets_[b2].values_[s2 * ATOMIC_ALIGN_RATIO]);
         }
 
 
@@ -427,6 +426,7 @@ namespace libcuckoo {
         }
 
         inline bool is_kick_locked(uint64_t par_ptr) const { return kick_lock_mask & par_ptr ;}
+
         inline bool try_kick_lock_par_ptr(atomic<uint64_t> & atomic_par_ptr){
             uint64_t par_ptr = atomic_par_ptr.load();
             if(is_kick_locked(par_ptr)) return false;
@@ -446,7 +446,9 @@ namespace libcuckoo {
             for (int i = 0; i < static_cast<int>(slot_per_bucket()); ++i) {
                 //block when kick
                 size_type par_ptr;
-                do{ par_ptr = b.values_[i].load();}
+                do{
+                    par_ptr = buckets_.read_from_slot(b,i);
+                }
                 while(is_kick_locked(par_ptr));
 
                 partial_t read_partial = get_partial(par_ptr);
@@ -484,7 +486,9 @@ namespace libcuckoo {
             for (int i = 0; i < static_cast<int>(slot_per_bucket()); ++i) {
                 //block when kick
                 size_type par_ptr;
-                do{ par_ptr = b.values_[i].load();}
+                do{
+                    par_ptr = buckets_.read_from_slot(b,i);
+                }
                 while(is_kick_locked(par_ptr));
 
                 partial_t read_partial = get_partial(par_ptr);
@@ -631,7 +635,7 @@ namespace libcuckoo {
                     //block when kick locked
                     size_type par_ptr;
                     do{
-                        par_ptr = b.values_[slot].load();
+                        par_ptr = buckets_.read_from_slot(b,slot);
                     } while (is_kick_locked(par_ptr));
 
                     partial_t kick_partial = get_partial(par_ptr);
@@ -689,7 +693,7 @@ namespace libcuckoo {
                 //block when kick locked
                 size_type par_ptr;
                 do{
-                    par_ptr = b.values_[first.slot].load();
+                    par_ptr = buckets_.read_from_slot(b,first.slot);
                 } while (is_kick_locked(par_ptr));
                 uint64_t ptr = get_ptr(par_ptr);
 
@@ -714,8 +718,9 @@ namespace libcuckoo {
                 //block when kick locked
                 size_type par_ptr;
                 do{
-                    par_ptr = b.values_[curr.slot].load();
+                    par_ptr = buckets_.read_from_slot(b,curr.slot);
                 } while (is_kick_locked(par_ptr));
+
                 uint64_t ptr = get_ptr(par_ptr);
 
 
@@ -747,7 +752,7 @@ namespace libcuckoo {
                 bucket & b = buckets_[bucket_i];
                 size_type par_ptr;
                 do{
-                    par_ptr = b.values_[cuckoo_path[0].slot].load();
+                    par_ptr = buckets_.read_from_slot(b,cuckoo_path[0].slot);
                 } while (is_kick_locked(par_ptr));
 
                 if (par_ptr == (uint64_t) nullptr ){
@@ -783,10 +788,10 @@ namespace libcuckoo {
 
 
                 //from par_ptr holding kick lock now
-                uint64_t from_par_ptr = fb.values_[fs].load();
+                uint64_t from_par_ptr = buckets_.read_from_slot(fb,fs);
                 uint64_t from_ptr = get_ptr(from_par_ptr);
-                bool a = tb.values_[ts].load() != ((uint64_t)nullptr | kick_lock_mask );
-                bool b = fb.values_[fs].load() == ((uint64_t) nullptr | kick_lock_mask);
+                bool a = buckets_.read_from_slot(tb,ts) != ((uint64_t)nullptr | kick_lock_mask );
+                bool b = buckets_.read_from_slot(fb,fs) == ((uint64_t) nullptr | kick_lock_mask);
                 bool c = hashed_key(ITEM_KEY(from_ptr),ITEM_KEY_LEN(from_ptr)).hash != from.hv.hash;
                 if (a||b||c){
                         kick_unlok_two(from.bucket,from.slot,to.bucket,to.slot);
@@ -805,11 +810,6 @@ namespace libcuckoo {
             return true;
         }
 
-//        void show_cuckoo_path(CuckooRecords & records,int depth){
-//            for(int i = 0 ; i <= depth; i++){
-//                cout<<i<<": "<<records[i].bucket<<" "<<records[i].slot<<" "<<buckets_[records[i].bucket].values_[records[i].slot].load()<<endl;
-//            }
-//        }
 
         cuckoo_status run_cuckoo(TwoBuckets &b, size_type &insert_bucket,
                                  size_type &insert_slot) {
@@ -999,7 +999,7 @@ namespace libcuckoo {
                     return true;
                 }
             } else {
-                uint64_t par_ptr = buckets_[pos.index].values_[pos.slot].load();
+                uint64_t par_ptr = buckets_.read_from_bucket_slot(pos.index,pos.slot);
                 uint64_t update_ptr = get_ptr(par_ptr);
                 if (check_ptr(update_ptr, key, key_len)) {
                     if (buckets_.try_updateKV(pos.index, pos.slot, par_ptr,merge_partial(hv.partial, (uint64_t) item))) {
@@ -1018,7 +1018,7 @@ namespace libcuckoo {
             TwoBuckets b = get_two_buckets(hv);
             table_position pos = cuckoo_find(key, key_len, hv.partial, b.i1, b.i2);
             if (pos.status == ok) {
-                uint64_t par_ptr = buckets_[pos.index].values_[pos.slot].load();
+                uint64_t par_ptr = buckets_.read_from_bucket_slot(pos.index,pos.slot);
                 uint64_t erase_ptr = get_ptr(par_ptr);
                 if (check_ptr(erase_ptr, key, key_len)) {
                     if (buckets_.try_eraseKV(pos.index, pos.slot, par_ptr)) {
