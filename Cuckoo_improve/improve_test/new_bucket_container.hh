@@ -14,7 +14,7 @@
 
 namespace libcuckoo {
 
-    static const int ATOMIC_ALIGN_RATIO = 2;
+    static const int ATOMIC_ALIGN_RATIO = 1;
 
 template <std::size_t SLOT_PER_BUCKET>
 class bucket_container {

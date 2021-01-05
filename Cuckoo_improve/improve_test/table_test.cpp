@@ -187,9 +187,10 @@ void insert_worker(int tid){
     //Prevent tail debris
     size_t step =  total_count / insert_thread_num;
     size_t num = tid == insert_thread_num -1 ?  step + total_count % insert_thread_num : step;
+    size_t base = tid * step;
 
     for (size_t i = 0; i < num ; i++) {
-        auto &req = requests[tid * step + i];
+        auto &req = requests[base + i];
         if (store.insert(req.key, req.key_len, req.value, req.value_len)) {
             insert_success_l++;
         } else {
@@ -219,16 +220,20 @@ void insert_worker(int tid){
 void worker(int tid) {
     thread_id = tid;
 
+    size_t step =  total_count / insert_thread_num;
+    size_t num = tid == insert_thread_num -1 ?  step + total_count % insert_thread_num : step;
+    size_t base = tid * step;
+
     Tracer t;
     t.startTime();
 
     while (stopMeasure.load(std::memory_order_relaxed) == 0) {
 
-        for (size_t i = 0; i < total_count; i++) {
-            op_func(requests[i]);
+        for (size_t i = 0; i < num; i++) {
+            op_func(requests[base + 1]);
         }
 
-        __sync_fetch_and_add(&op_num, total_count);
+        __sync_fetch_and_add(&op_num, num);
 
         uint64_t tmptruntime = t.fetchTime();
         if (tmptruntime / 1000000 >= timer_range) {
