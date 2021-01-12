@@ -960,7 +960,13 @@ namespace libcuckoo {
         TwoBuckets b = get_two_buckets(hv);
         table_position pos = cuckoo_find(key, key_len, hv.partial, b.i1, b.i2);
         if (pos.status == ok) {
+
             //do some thing
+            size_t par_ptr = buckets_.read_from_bucket_slot(pos.index,pos.slot);
+            size_t ptr = get_ptr(par_ptr);
+            bool a = str_equal_to()(ITEM_KEY(ptr),ITEM_KEY_LEN(ptr),key,key_len);
+            ASSERT(a,"key error");
+
             return true;
         }
         return false;
@@ -1027,6 +1033,7 @@ namespace libcuckoo {
                 }
             } else {
                 //return false only when key not find
+
                 return false;
             }
         }
