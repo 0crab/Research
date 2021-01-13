@@ -220,8 +220,8 @@ void insert_worker(int tid){
 void worker(int tid) {
     thread_id = tid;
 
-    size_t step =  total_count / insert_thread_num;
-    size_t num = tid == insert_thread_num -1 ?  step + total_count % insert_thread_num : step;
+    size_t step =  total_count / thread_num;
+    size_t num = tid == thread_num -1 ?  step + total_count % thread_num : step;
     size_t base = tid * step;
 
     Tracer t;
