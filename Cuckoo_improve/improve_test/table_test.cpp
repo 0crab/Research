@@ -230,7 +230,7 @@ void worker(int tid) {
     while (stopMeasure.load(std::memory_order_relaxed) == 0) {
 
         for (size_t i = 0; i < num; i++) {
-            op_func(requests[base + 1]);
+            op_func(requests[base + i]);
         }
 
         __sync_fetch_and_add(&op_num, num);
