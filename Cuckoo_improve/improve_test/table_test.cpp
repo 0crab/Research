@@ -281,8 +281,8 @@ void prepare();
 
 int main(int argc, char **argv) {
     if (argc == 9) {
-        thread_num = std::atol(argv[1]);
-        insert_thread_num = std::atol(argv[2]);
+        insert_thread_num = std::atol(argv[1]);
+        thread_num = std::atol(argv[2]);
         init_hashpower = std::atol(argv[3]);
         op_chose = static_cast<Op_type>(std::atol(argv[4]));
         key_range = std::atol(argv[5]);
@@ -290,7 +290,7 @@ int main(int argc, char **argv) {
         distribution = std::atol(argv[7]);
         timer_range = std::atol(argv[8]);
     } else {
-        cout << "./a.out <thread_num> <insert_thread_num> <init_hashpower> <op_chose> <key_range>"
+        cout << "./a.out <insert_thread_num> <thread_num> <init_hashpower> <op_chose> <key_range>"
                 "<total_count> <distribution> <timer_range>" << endl;
         cout << "op_chose    :0-Find,1-Set,2-Erase,3-Insert,4-Rand " << endl;
         cout << "distribution:0-unif,1-zipf" << endl;

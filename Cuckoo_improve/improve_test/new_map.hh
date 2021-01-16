@@ -111,7 +111,7 @@ namespace libcuckoo {
 
         static constexpr uint16_t slot_per_bucket() { return SLOT_PER_BUCKET; }
 
-        new_cuckoohash_map(size_type n = DEFAULT_HASHPOWER) : buckets_(n) {
+        new_cuckoohash_map(size_type n = DEFAULT_HASHPOWER) : buckets_(n),rehash_flag(0) {
             ;
         }
 
@@ -121,6 +121,7 @@ namespace libcuckoo {
         }
 
         class hashpower_changed {};
+        class need_rehash {};
 
         enum cuckoo_status {
             ok,
@@ -209,6 +210,7 @@ namespace libcuckoo {
                         return false;
                 }
             }
+            if(i1 == i2) return true;
             for(int i = 0 ; i < SLOT_PER_BUCKET;i++){
                 uint64_t com_par_ptr = buckets_.read_from_bucket_slot(i2,i);
                 if(com_par_ptr == (uint64_t) nullptr) continue;
@@ -272,7 +274,7 @@ namespace libcuckoo {
         class KickHazaManager{
         public:
 
-            static const int HP_MAX_THREADS = 128;
+            static const int HP_MAX_THREADS = 512;
 
             static const int ALIGN_RATIO = 128 / sizeof (Handle);
 
@@ -298,6 +300,14 @@ namespace libcuckoo {
             atomic<Handle> * register_par(int tid,partial_t par) {
                 manager[tid * ALIGN_RATIO].store(Handle{true,par});
                 return &manager[tid * ALIGN_RATIO];
+            }
+
+            bool empty(){
+                for(int i  = 0 ; i < HP_MAX_THREADS ; i++){
+                    Handle th = manager[i * ALIGN_RATIO].load();
+                    if(th.holded == true) return false;
+                }
+                return true;
             }
 
             int running_max_thread;
@@ -414,6 +424,16 @@ namespace libcuckoo {
         TwoBuckets get_two_buckets(const hash_value &hv) const {
             // while (true) {
             const size_type hp = hashpower();
+            const size_type i1 = index_hash(hp, hv.hash);
+            const size_type i2 = alt_index(hp, hv.partial, i1);
+            //maybe rehash here
+            return TwoBuckets(i1, i2);
+            //}
+        }
+
+        TwoBuckets get_two_buckets(const hash_value &hv,size_type hp) const {
+            // while (true) {
+
             const size_type i1 = index_hash(hp, hv.hash);
             const size_type i2 = alt_index(hp, hv.partial, i1);
             //maybe rehash here
@@ -790,10 +810,20 @@ namespace libcuckoo {
                 //from par_ptr holding kick lock now
                 uint64_t from_par_ptr = buckets_.read_from_slot(fb,fs);
                 uint64_t from_ptr = get_ptr(from_par_ptr);
+                uint64_t to_par_ptr = buckets_.read_from_slot(tb,ts);
+                uint64_t to_ptr = get_ptr(to_par_ptr);
+
+//                uint64_t from_partial =  get_partial(from_par_ptr);
+//                bool from_kick_locked = from_par_ptr & kick_lock_mask;
                 bool a = buckets_.read_from_slot(tb,ts) != ((uint64_t)nullptr | kick_lock_mask );
                 bool b = buckets_.read_from_slot(fb,fs) == ((uint64_t) nullptr | kick_lock_mask);
-                bool c = hashed_key(ITEM_KEY(from_ptr),ITEM_KEY_LEN(from_ptr)).hash != from.hv.hash;
-                if (a||b||c){
+                //bool c = hashed_key(ITEM_KEY(from_ptr),ITEM_KEY_LEN(from_ptr)).hash != from.hv.hash;
+                //!b&&c ensure from par_ptr not empty
+                ASSERT(from_par_ptr == buckets_.read_from_slot(fb,fs) ,"");
+                ASSERT(to_par_ptr == buckets_.read_from_slot(tb,ts),"");
+
+                if (a || b ||
+                    hashed_key(ITEM_KEY(from_ptr),ITEM_KEY_LEN(from_ptr)).hash != from.hv.hash ){
                         kick_unlok_two(from.bucket,from.slot,to.bucket,to.slot);
                         kick_lock_failure_data_check_after_l++;
                         return false;
@@ -893,9 +923,28 @@ namespace libcuckoo {
                 }
                 return table_position{insert_bucket, insert_slot, ok};
             }
+            ASSERT(st == failure,"st type error");
+            return table_position{0, 0, failure_table_full};
 
-            ASSERT(false,"failure_table_full");
+        }
 
+        table_position cuckoo_insert_rehashing(buckets_t &new_buckets_,const hash_value hv, TwoBuckets &b, char *key, size_type key_len){
+            int res1, res2;
+            bucket &b1 = new_buckets_[b.i1];
+            if (!try_find_insert_bucket(b1, res1, hv.partial, key, key_len)) {
+                ASSERT(false,"rehash insert failure_key_duplicated");
+            }
+            bucket &b2 = new_buckets_[b.i2];
+            if (!try_find_insert_bucket(b2, res2, hv.partial, key, key_len)) {
+                ASSERT(false,"rehash insert failure_key_duplicated");
+            }
+            if (res1 != -1) {
+                return table_position{b.i1, static_cast<size_type>(res1), ok};
+            }
+            if (res2 != -1) {
+                return table_position{b.i2, static_cast<size_type>(res2), ok};
+            }
+            ASSERT(false,"cuckoo_insert_rehashing failure");
         }
 
         table_position cuckoo_insert_loop(hash_value hv, TwoBuckets &b, char *key, size_type key_len) {
@@ -908,6 +957,8 @@ namespace libcuckoo {
                     case failure_key_duplicated:
                         return pos;
                     case failure_table_full:
+                        throw need_rehash();
+
                         ASSERT(false,"table full,need rehash");
                         // Expand the table and try again, re-grabbing the locks
                         //cuckoo_fast_double<TABLE_MODE, automatic_resize>(hp);
@@ -932,6 +983,130 @@ namespace libcuckoo {
 
         uint64_t get_item_num() { return buckets_.get_item_num(); }
 
+        size_type move_bucket(buckets_t &old_buckets, buckets_t &new_buckets,
+                         size_type old_bucket_ind) const noexcept {
+            const size_t old_hp = old_buckets.hashpower();
+            const size_t new_hp = new_buckets.hashpower();
+
+            size_type move_count = 0;
+
+            // By doubling the table size, the index_hash and alt_index of each key got
+            // one bit added to the top, at position old_hp, which means anything we
+            // have to move will either be at the same bucket position, or exactly
+            // hashsize(old_hp) later than the current bucket.
+            bucket &old_bucket = old_buckets[old_bucket_ind];
+
+            const size_type new_bucket_ind = old_bucket_ind + hashsize(old_hp);
+            size_type new_bucket_slot = 0;
+
+            // For each occupied slot, either move it into its same position in the
+            // new buckets container, or to the first available spot in the new
+            // bucket in the new buckets container.
+            for (size_type old_bucket_slot = 0; old_bucket_slot < slot_per_bucket();
+                 ++old_bucket_slot) {
+                //if (!old_bucket.occupied(old_bucket_slot)) {
+                if(old_bucket.get_item_ptr(old_bucket_slot) == (uint64_t) nullptr ){
+                    continue;
+                }
+
+                move_count ++;
+                size_type par_ptr = old_bucket.get_item_ptr(old_bucket_slot);
+                size_type ptr = get_ptr(par_ptr);
+                size_type par = get_partial(par_ptr);
+                const hash_value hv = hashed_key(ITEM_KEY(ptr),ITEM_KEY_LEN(ptr));
+                const size_type old_ihash = index_hash(old_hp, hv.hash);
+                const size_type old_ahash = alt_index(old_hp, hv.partial, old_ihash);
+                const size_type new_ihash = index_hash(new_hp, hv.hash);
+                const size_type new_ahash = alt_index(new_hp, hv.partial, new_ihash);
+                size_type dst_bucket_ind, dst_bucket_slot;
+                if ((old_bucket_ind == old_ihash && new_ihash == new_bucket_ind) ||
+                    (old_bucket_ind == old_ahash && new_ahash == new_bucket_ind)) {
+                    // We're moving the key to the new bucket
+                    dst_bucket_ind = new_bucket_ind;
+                    dst_bucket_slot = new_bucket_slot++;
+                } else {
+                    // We're moving the key to the old bucket
+                    assert((old_bucket_ind == old_ihash && new_ihash == old_ihash) ||
+                           (old_bucket_ind == old_ahash && new_ahash == old_ahash));
+                    dst_bucket_ind = old_bucket_ind;
+                    dst_bucket_slot = old_bucket_slot;
+                }
+
+                new_buckets.set_ptr(dst_bucket_ind,dst_bucket_slot,par_ptr);
+                old_buckets.set_ptr(old_bucket_ind,old_bucket_slot,(uint64_t) nullptr);
+            }
+            return move_count;
+        }
+
+        //guarantee that just one thread call this function
+        //guarantee that no other thread is working on this hashtable ==> haza_manageer is all empty
+        void migrate_to_new(){
+            //check there are no other threads working
+            ASSERT(rehash_flag.load(),"rehash not locked");
+            ASSERT(kickHazaManager.empty() ,"--kickhazamanager not empty");
+            ASSERT(check_unique(),"key not unique!");
+            ASSERT(check_nolock(),"there are still locks in map!");
+            cout<<"thread "<<this_thread::get_id<<" calling migrate function"<<endl;
+
+            size_type start_old_num = buckets_.get_item_num();
+
+            size_type new_hashpower = hashpower() + 1;
+            buckets_t new_buckets_(new_hashpower);
+            ASSERT(new_buckets_.hashpower()  ==  hashpower() +1,"--hashpower error");
+            ASSERT(new_buckets_.get_item_num() == 0 ,"new bucket not empty");
+
+            //migrate items to new buckets one by one
+            size_type move_count = 0;
+            for(size_type i = 0 ; i < buckets_.size(); i++){
+                move_count += move_bucket(buckets_,new_buckets_,i);
+            }
+
+            ASSERT(buckets_.get_item_num() == 0 ,"old bucket not empty after move")
+
+
+            size_type af_old_num = buckets_.get_item_num();
+            size_type af_new_num = new_buckets_.get_item_num();
+
+            ASSERT(move_count == start_old_num,"move num error");
+            ASSERT(af_new_num == start_old_num,"migrate num error");
+            ASSERT(af_old_num == 0,"migrate num error,not empty");
+
+            buckets_.swap(new_buckets_);
+            new_buckets_.set_ready_to_destory();
+
+            ASSERT( buckets_.get_item_num() == af_new_num &&
+                    new_buckets_.get_item_num() == af_old_num ,"swap buckets error");
+
+            ASSERT(new_buckets_.get_item_num() == 0,"new buckets not empty");
+            ASSERT(check_unique(),"key not unique!");
+            ASSERT(check_nolock(),"there are still locks in map!");
+
+            cout<<"-->finish rehash ,now hashpower is "<<buckets_.hashpower()<<endl;
+
+        }
+
+        atomic<Handle> * block_when_rehashing(const hash_value hv ){
+            atomic<Handle> * tmp_handle;
+
+            while(true){
+
+                while( rehash_flag.load() ){pthread_yield();}
+
+                tmp_handle = kickHazaManager.register_par(thread_id,hv.partial);
+
+                if(!rehash_flag.load()) break;
+
+                tmp_handle->store({false,0});
+
+            }
+
+            return tmp_handle;
+        }
+
+        inline void wait_for_other_thread_finish(){
+            while(!kickHazaManager.empty()){pthread_yield();}
+        }
+
         //true hit , false miss
         bool find(char *key, size_t len);
 
@@ -943,6 +1118,7 @@ namespace libcuckoo {
         //true erase success, false miss
         bool erase(char *key, size_t key_len);
 
+        atomic<bool> rehash_flag;
 
         mutable buckets_t buckets_;
 
@@ -951,11 +1127,9 @@ namespace libcuckoo {
     };
 
     bool new_cuckoohash_map::find(char *key, size_t key_len) {
-
         const hash_value hv = hashed_key(key, key_len);
 
-        //protect from kick
-        ParRegisterManager a(kickHazaManager.register_par(thread_id,hv.partial));
+        ParRegisterManager pm(block_when_rehashing(hv));
 
         TwoBuckets b = get_two_buckets(hv);
         table_position pos = cuckoo_find(key, key_len, hv.partial, b.i1, b.i2);
@@ -972,15 +1146,48 @@ namespace libcuckoo {
         return false;
     }
 
-    bool new_cuckoohash_map::insert(char *key, size_t key_len, char *value, size_t value_len) {
-        Item *item = allocate_item(key, key_len, value, value_len);
-        const hash_value hv = hashed_key(key, key_len);
-        //protect from kick
-        ParRegisterManager a(kickHazaManager.register_par(thread_id,hv.partial));
 
-        while (true) {
+
+    bool new_cuckoohash_map::insert(char *key, size_t key_len, char *value, size_t value_len) {
+        while(true){
+            Item *item = allocate_item(key, key_len, value, value_len);
+            const hash_value hv = hashed_key(key, key_len);
+
+            ParRegisterManager pm(block_when_rehashing(hv));
+
             TwoBuckets b = get_two_buckets(hv);
-            table_position pos = cuckoo_insert_loop(hv, b, key, key_len);
+            table_position pos;
+            size_type old_hashpower = hashpower();
+
+            try {
+
+                pos = cuckoo_insert_loop(hv, b, key, key_len);
+
+            }catch (need_rehash){
+
+                pm.get()->store({false,0});
+
+                bool old_flag = false;
+                if(rehash_flag.compare_exchange_strong(old_flag,true)){
+
+                    if(old_hashpower != hashpower()){
+                        //ABA,other thread has finished rehash.release rehash_flag and redo
+                        rehash_flag.store(false);
+                        continue;
+                    }else{
+                        wait_for_other_thread_finish();
+                        migrate_to_new();
+                        rehash_flag.store(false);
+
+                        continue;
+                    }
+
+                }else{
+                    continue;
+                }
+
+            }
+
             if (pos.status == ok) {
                 if (buckets_.try_insertKV(pos.index, pos.slot, merge_partial(hv.partial, (uint64_t) item))) {
                     return true;
@@ -990,6 +1197,8 @@ namespace libcuckoo {
                 return false;
             }
         }
+
+
     }
 
     bool new_cuckoohash_map::insert_or_assign(char *key, size_t key_len, char *value, size_t value_len) {

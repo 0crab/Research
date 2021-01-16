@@ -36,15 +36,50 @@ public:
   //private:
     friend class bucket_container;
 
+    uint64_t get_item_ptr(size_t i){
+        return values_[i * ATOMIC_ALIGN_RATIO].load();
+    }
+
+    bool empty(){
+        for(size_type i = 0; i < SLOT_PER_BUCKET * ATOMIC_ALIGN_RATIO ; i ++){
+            if(values_[i].load() != (uint64_t) nullptr)
+                return false;
+        }
+        return true;
+    }
+
     //TODO align
 
     std::array<std::atomic<uint64_t>,SLOT_PER_BUCKET * ATOMIC_ALIGN_RATIO> values_;
 
   };
 
-  bucket_container(size_type hp):hashpower_(hp){
+  bucket_container(size_type hp):hashpower_(hp),ready_to_destory(false){
       buckets_ = new bucket[size()]();
   }
+
+  ~bucket_container() noexcept { destroy_buckets(); }
+
+  void destroy_buckets() noexcept {
+        bool still_have_item = false;
+        for (size_type i = 0; i < size(); ++i) {
+            for(size_type j = 0; j < SLOT_PER_BUCKET ;j++){
+                if(read_from_bucket_slot(i,j) != (uint64_t) nullptr){
+                    still_have_item = true;
+                    break;
+                }
+            }
+        }
+        ASSERT(!(ready_to_destory && still_have_item ) ,"bucket still have item!");
+        delete[]buckets_;
+  }
+
+    void swap(bucket_container &bc) noexcept {
+        size_t bc_hashpower = bc.hashpower();
+        bc.hashpower(hashpower());
+        hashpower(bc_hashpower);
+        std::swap(buckets_, bc.buckets_);
+    }
 
   size_type hashpower() const {
     return hashpower_.load(std::memory_order_acquire);
@@ -55,13 +90,6 @@ public:
   }
 
   size_type size() const { return size_type(1) << hashpower(); }
-
-  void swap(bucket_container &bc) noexcept {
-    size_t bc_hashpower = bc.hashpower();
-    hashpower(bc_hashpower);
-    std::swap(buckets_, bc.buckets_);
-  }
-
 
   bucket &operator[](size_type i) { return buckets_[i]; }
   const bucket &operator[](size_type i) const { return buckets_[i]; }
@@ -102,7 +130,7 @@ public:
         return b.values_[slot * ATOMIC_ALIGN_RATIO].compare_exchange_strong(old,(uint64_t) nullptr);
   }
 
-  //only for kick
+  //only for kick and rehash
   //par_ptr holding kick lock
   void set_ptr(size_type ind, size_type slot,uint64_t par_ptr){
       bucket &b = buckets_[ind];
@@ -115,18 +143,21 @@ public:
       for(size_t i = 0; i < size(); i++ ){
            bucket &b = buckets_[i];
            for(int j =0; j< SLOT_PER_BUCKET;j++){
-               if(b.values_[j * ATOMIC_ALIGN_RATIO].load() != (uint64_t) nullptr) count++;
+               if(b.values_[j * ATOMIC_ALIGN_RATIO].load() != (uint64_t) nullptr) {
+                   count++;
+               }
            }
       }
       table_mtx.unlock();
       return count;
   }
 
-  bool key_uniqueness(){
-      //
+  void set_ready_to_destory(){
+      ready_to_destory = true;
   }
 
 private:
+    bool ready_to_destory;
 
   std::atomic<size_type> hashpower_;
 
