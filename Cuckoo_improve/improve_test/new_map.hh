@@ -982,6 +982,7 @@ namespace libcuckoo {
         }
 
         uint64_t get_item_num() { return buckets_.get_item_num(); }
+        void get_key_position_info(vector<double> & kpv){buckets_.get_key_position_info(kpv);}
 
         size_type move_bucket(buckets_t &old_buckets, buckets_t &new_buckets,
                          size_type old_bucket_ind) const noexcept {
@@ -1176,7 +1177,9 @@ namespace libcuckoo {
                         continue;
                     }else{
                         wait_for_other_thread_finish();
+
                         migrate_to_new();
+
                         rehash_flag.store(false);
 
                         continue;

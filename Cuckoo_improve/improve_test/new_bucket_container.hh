@@ -148,9 +148,30 @@ public:
                }
            }
       }
+      total_count = count;
       table_mtx.unlock();
       return count;
   }
+
+  void get_key_position_info(vector<double> & kpv){
+      table_mtx.lock();
+      ASSERT(kpv.size() == SLOT_PER_BUCKET, "key_position_info length error");
+      vector<uint64_t> count_vtr(4);
+      for(size_type i = 0 ; i < size() ; i++){
+          bucket &b = buckets_[i];
+          for(int j =0; j< SLOT_PER_BUCKET;j++){
+              if(b.values_[j * ATOMIC_ALIGN_RATIO].load() != (uint64_t) nullptr) {
+                  count_vtr[j]++;
+              }
+          }
+      }
+      for(size_type i = 0; i < SLOT_PER_BUCKET; i++){
+          kpv[i] = count_vtr[i] * 1.0 / total_count;
+      }
+      table_mtx.unlock();
+  }
+
+
 
   void set_ready_to_destory(){
       ready_to_destory = true;
@@ -164,6 +185,10 @@ private:
   bucket *  buckets_;
 
   std::mutex table_mtx;
+
+  uint64_t total_count;
+
+
 };
 
 }  // namespace libcuckoo

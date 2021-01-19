@@ -392,8 +392,15 @@ void show_info_after() {
     std::cout << " update_success " << update_success << "\tupdate_failure " << update_failure << std::endl;
     std::cout << " erase_success " << erase_success << "\terase_failure " << erase_failure << std::endl;
 
+
     uint64_t item_num = store.get_item_num();
+    vector<double> key_position(4);
+    store.get_key_position_info(key_position);
     std::cout << "items in table " << item_num << std::endl;
+    std::cout << "position ratio "  << key_position[0] << " : "
+                                        <<key_position[1] << " : "
+                                        <<key_position[2] << " : "
+                                        <<key_position[3] <<endl;
 
     std::cout << endl << " op_num " << op_num << std::endl;
 
