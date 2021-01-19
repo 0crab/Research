@@ -165,6 +165,7 @@ public:
               }
           }
       }
+
       for(size_type i = 0; i < SLOT_PER_BUCKET; i++){
           kpv[i] = count_vtr[i] * 1.0 / total_count;
       }
