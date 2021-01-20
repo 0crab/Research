@@ -204,14 +204,14 @@ void ycsb_op_func(YCSB_request * req){
 
         //switch(Find){
         case lookup : {
-            if (store.find(req->getKey(), req->keyLength()))
+            if (store.find(req->getKey(), req->keyLength()-4))
                 find_success_l++;
             else
                 find_failure_l++;
         }
             break;
         case insert : {
-            if (store.insert(req->getKey(), req->keyLength(), req->getVal(), req->valLength())) {
+            if (store.insert(req->getKey(), req->keyLength()-4, req->getVal(), req->valLength())) {
                 insert_success_l++;
             } else {
                 insert_failure_l++;
@@ -219,7 +219,7 @@ void ycsb_op_func(YCSB_request * req){
         }
             break;
         case update : {
-            if (store.insert_or_assign(req->getKey(), req->keyLength(), req->getVal(), req->valLength())) {
+            if (store.insert_or_assign(req->getKey(), req->keyLength()-4, req->getVal(), req->valLength())) {
                 set_insert_l++;
             } else {
                 set_assign_l++;
@@ -250,7 +250,7 @@ void insert_worker(int tid){
             }
         }else{
             auto &req = ycsb_loads[base + i];
-            if (store.insert(req->getKey(), req->keyLength(), req->getVal(), req->valLength())) {
+            if (store.insert(req->getKey(), req->keyLength()-4, req->getVal(), req->valLength())) {
                 insert_success_l++;
             } else {
                 insert_failure_l++;
