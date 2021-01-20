@@ -393,6 +393,7 @@ void show_info_after() {
     std::cout << " erase_success " << erase_success << "\terase_failure " << erase_failure << std::endl;
 
 
+
     uint64_t item_num = store.get_item_num();
     vector<double> key_position(4);
     store.get_key_position_info(key_position);
@@ -400,7 +401,8 @@ void show_info_after() {
     std::cout << "position ratio "  << key_position[0] << " : "
                                         <<key_position[1] << " : "
                                         <<key_position[2] << " : "
-                                        <<key_position[3] <<endl;
+                                        <<key_position[3] <<std::endl;
+    std::cout<< "occupancy "<< item_num * 1.0 / store.slot_num() <<std::endl;
 
     std::cout << endl << " op_num " << op_num << std::endl;
 

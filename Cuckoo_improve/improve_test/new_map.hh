@@ -523,7 +523,7 @@ namespace libcuckoo {
                         return false;
                     }
                 } else {
-                    slot = slot == -1 ? slot : i;
+                    slot = slot == -1 ? i : slot;
                 }
             }
             return true;
