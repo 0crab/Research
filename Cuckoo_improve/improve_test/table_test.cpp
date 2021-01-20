@@ -10,6 +10,19 @@
 
 #include "new_map.hh"
 #include "assert_msg.h"
+#include "ycsb_loader.h"
+
+
+#define LOCAL 1
+
+#ifdef LOCAL
+    string load_filepath = "/mnt/c/CLionProjects/Research/Cuckoo_improve/improve_test/load-a.dat";
+    string run_filepath = "/mnt/c/CLionProjects/Research/Cuckoo_improve/improve_test/run-a.dat";
+#else
+    string load_filepath = "/mnt/nvme/czl/YCSB/load-c-200m-8B.dat";
+    string run_filepath = "/mnt/nvme/czl/YCSB/run-c-200m-8B.dat";
+#endif
+
 
 using namespace libcuckoo;
 
@@ -38,7 +51,12 @@ typedef struct Request {
 };
 
 Request *requests;
+Request *loads;
+std::vector<YCSB_request *> ycsb_loads;
+std::vector<YCSB_request *> ycsb_requests;
 
+
+bool YCSB;
 int thread_num = 1;
 int insert_thread_num = 1;
 size_t init_hashpower = 1;
@@ -181,6 +199,39 @@ void op_func(const Request &req) {
 
 }
 
+void ycsb_op_func(YCSB_request * req){
+    switch (req->getOp()) {
+
+        //switch(Find){
+        case lookup : {
+            if (store.find(req->getKey(), req->keyLength()))
+                find_success_l++;
+            else
+                find_failure_l++;
+        }
+            break;
+        case insert : {
+            if (store.insert(req->getKey(), req->keyLength(), req->getVal(), req->valLength())) {
+                insert_success_l++;
+            } else {
+                insert_failure_l++;
+            }
+        }
+            break;
+        case update : {
+            if (store.insert_or_assign(req->getKey(), req->keyLength(), req->getVal(), req->valLength())) {
+                set_insert_l++;
+            } else {
+                set_assign_l++;
+            }
+        }
+            break;
+        default:
+            ASSERT(false,"optype error");
+
+    }
+}
+
 
 void insert_worker(int tid){
 
@@ -190,12 +241,22 @@ void insert_worker(int tid){
     size_t base = tid * step;
 
     for (size_t i = 0; i < num ; i++) {
-        auto &req = requests[base + i];
-        if (store.insert(req.key, req.key_len, req.value, req.value_len)) {
-            insert_success_l++;
-        } else {
-            insert_failure_l++;
+        if(!YCSB){
+            auto &req = requests[base + i];
+            if (store.insert(req.key, req.key_len, req.value, req.value_len)) {
+                insert_success_l++;
+            } else {
+                insert_failure_l++;
+            }
+        }else{
+            auto &req = ycsb_loads[base + i];
+            if (store.insert(req->getKey(), req->keyLength(), req->getVal(), req->valLength())) {
+                insert_success_l++;
+            } else {
+                insert_failure_l++;
+            }
         }
+
     }
 
 
@@ -230,7 +291,12 @@ void worker(int tid) {
     while (stopMeasure.load(std::memory_order_relaxed) == 0) {
 
         for (size_t i = 0; i < num; i++) {
-            op_func(requests[base + i]);
+            if(!YCSB){
+                op_func(requests[base + i]);
+            }else{
+                ycsb_op_func(ycsb_requests[base + i]);
+            }
+
         }
 
         __sync_fetch_and_add(&op_num, num);
@@ -247,30 +313,42 @@ void worker(int tid) {
 
 
 void prepare(){
+    if(!YCSB){
+        double skew = distribution == 0? 0.0:0.99;
 
-    double skew = distribution == 0? 0.0:0.99;
+        uint64_t *loads = new uint64_t[total_count]();
+        RandomGenerator<uint64_t>::generate(loads,key_range,total_count,skew);
 
-    uint64_t *loads = new uint64_t[total_count]();
-    RandomGenerator<uint64_t>::generate(loads,key_range,total_count,skew);
+        srand((unsigned) time(NULL));
+        //init_req
+        static_assert(op_type_num == 4);
+        requests = new Request[total_count];
+        for (size_t i = 0; i < total_count; i++) {
+            requests[i].optype = Find;//rand() % 2 == 0? Find : Set;
 
-    srand((unsigned) time(NULL));
-    //init_req
-    static_assert(op_type_num == 4);
-    requests = new Request[total_count];
-    for (size_t i = 0; i < total_count; i++) {
-        requests[i].optype = Find;//rand() % 2 == 0? Find : Set;
+            requests[i].key = (char *) calloc(1, 8 * sizeof(char));
+            requests[i].key_len = default_key_len;
+            *((size_t *) requests[i].key) = loads[i];
 
-        requests[i].key = (char *) calloc(1, 8 * sizeof(char));
-        requests[i].key_len = default_key_len;
-        *((size_t *) requests[i].key) = loads[i];
+            requests[i].value = (char *) calloc(1, 8 * sizeof(char));
+            requests[i].value_len = default_value_len;
+            *((size_t *) requests[i].value) = loads[i];
 
-        requests[i].value = (char *) calloc(1, 8 * sizeof(char));
-        requests[i].value_len = default_value_len;
-        *((size_t *) requests[i].value) = loads[i];
+        }
 
+        delete[] loads;
+    }else{
+        YCSBLoader loader(load_filepath.c_str());
+        ycsb_loads=loader.load();
+        total_count = ycsb_loads.size();
+
+        YCSBLoader loader1(run_filepath.c_str());
+        ycsb_requests=loader1.load();
+        ASSERT(total_count == ycsb_requests.size(),"total count error");
+        std::cout<<"total_count: "<<total_count<<std::endl;
     }
 
-    delete[] loads;
+
 }
 
 bool check_unique();
@@ -289,11 +367,22 @@ int main(int argc, char **argv) {
         total_count = std::atol(argv[6]);
         distribution = std::atol(argv[7]);
         timer_range = std::atol(argv[8]);
-    } else {
+        YCSB = false;
+    } else if(argc == 5){
+        insert_thread_num = std::atol(argv[1]);
+        thread_num = std::atol(argv[2]);
+        init_hashpower = std::atol(argv[3]);
+        timer_range = std::atol(argv[4]);
+        YCSB = true;
+    }else{
+        cout << "micro_benchmark:"<<endl;
         cout << "./a.out <insert_thread_num> <thread_num> <init_hashpower> <op_chose> <key_range>"
                 "<total_count> <distribution> <timer_range>" << endl;
+        cout << "ycsb:"<<endl;
+        cout << "./a.out <insert_thread_num> <thread_num> <init_hashpower> <timer_range>" << endl;
         cout << "op_chose    :0-Find,1-Set,2-Erase,3-Insert,4-Rand " << endl;
         cout << "distribution:0-unif,1-zipf" << endl;
+
         exit(-1);
     }
 
@@ -348,40 +437,51 @@ void show_info_insert(){
 }
 
 void show_info_before() {
-    string op_chose_str;
-    switch (op_chose) {
-        case Find:
-            op_chose_str = "Find";
-            break;
-        case Set:
-            op_chose_str = "Set";
-            break;
-        case Erase:
-            op_chose_str = "Erase";
-            break;
-        case Insert:
-            op_chose_str = "Insert";
-            break;
-        case Rand:
-            op_chose_str = "Rand";
-            break;
-        default:
-            ASSERT(false, "op_chose not defined");
+    if(YCSB){
+        std::cout << " thread_num " << thread_num
+                 << " init_hashpower " << init_hashpower
+                 << " timer_range " << timer_range << std::endl;
+        std::cout << "---YCSB--- "<<std::endl;
+        std::cout << "loadpath:\t"<<load_filepath<<std::endl;
+        std::cout << "runpath:\t"<<run_filepath<<std::endl;
+        std::cout << "loading file... "<<std::endl;
+    }else{
+        string op_chose_str;
+        switch (op_chose) {
+            case Find:
+                op_chose_str = "Find";
+                break;
+            case Set:
+                op_chose_str = "Set";
+                break;
+            case Erase:
+                op_chose_str = "Erase";
+                break;
+            case Insert:
+                op_chose_str = "Insert";
+                break;
+            case Rand:
+                op_chose_str = "Rand";
+                break;
+            default:
+                ASSERT(false, "op_chose not defined");
+        }
+
+        ASSERT(distribution == 0 || distribution == 1, "distribution not defined");
+        string distribution_str = distribution == 0 ? "uinf" : "zipf";
+
+        std::cout << " thread_num " << thread_num
+                  << " init_hashpower " << init_hashpower
+                  << " op_chose " << op_chose_str
+                  << " key_range " << key_range
+                  << " total_count " << total_count
+                  << " distribution " << distribution_str
+                  << " timer_range " << timer_range << std::endl;
+
+        uint64_t total_slot_num = 4 * (1ull << init_hashpower);
+        std::cout << "total_slot_num " << total_slot_num << std::endl;
     }
 
-    ASSERT(distribution == 0 || distribution == 1, "distribution not defined");
-    string distribution_str = distribution == 0 ? "uinf" : "zipf";
-
-    std::cout << " thread_num " << thread_num
-              << " init_hashpower " << init_hashpower
-              << " op_chose " << op_chose_str
-              << " key_range " << key_range
-              << " total_count " << total_count
-              << " distribution " << distribution_str
-              << " timer_range " << timer_range << std::endl;
-
-    uint64_t total_slot_num = 4 * (1ull << init_hashpower);
-    std::cout << "total_slot_num " << total_slot_num << std::endl;
 }
 
 void show_info_after() {

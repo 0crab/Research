@@ -73,6 +73,7 @@ void concurrent_worker(int tid){
                 index = conflictlist[i] ? THREAD_NUM * align_with: tid * align_with;
 
                 node *ptr = (node *) deallocator->load(tid, std::ref(bucket[index]));
+
                 l_value += ptr->value;
                 deallocator->read(tid);
             }

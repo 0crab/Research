@@ -9,7 +9,8 @@
 #include <memory>
 #include <type_traits>
 #include <utility>
-
+#include "ihazard.h"
+//#include "brown_reclaim.h"
 #include "cuckoohash_util.hh"
 
 namespace libcuckoo {
@@ -189,6 +190,7 @@ private:
 
   uint64_t total_count;
 
+  //ihazard<Item> *deallocator;
 
 };
 
