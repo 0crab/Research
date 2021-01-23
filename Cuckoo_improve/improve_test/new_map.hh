@@ -1222,7 +1222,7 @@ namespace libcuckoo {
         Item *item = allocate_item(key, key_len, value, value_len);
         const hash_value hv = hashed_key(key, key_len);
         //protect from kick
-        ParRegisterManager a(kickHazaManager.register_hash(thread_id,hv.partial));
+        ParRegisterManager pm(block_when_rehashing(hv));
         while (true) {
             TwoBuckets b = get_two_buckets(hv);
             table_position pos = cuckoo_insert_loop(hv, b, key, key_len);
@@ -1245,7 +1245,7 @@ namespace libcuckoo {
     bool new_cuckoohash_map::erase(char *key, size_t key_len) {
         const hash_value hv = hashed_key(key, key_len);
         //protect from kick
-        ParRegisterManager a(kickHazaManager.register_hash(thread_id,hv.partial));
+        ParRegisterManager pm(block_when_rehashing(hv));
         while (true) {
             TwoBuckets b = get_two_buckets(hv);
             table_position pos = cuckoo_find(key, key_len, hv.partial, b.i1, b.i2);
