@@ -111,7 +111,7 @@ namespace libcuckoo {
 
         static constexpr uint16_t slot_per_bucket() { return SLOT_PER_BUCKET; }
 
-        new_cuckoohash_map(size_type n = DEFAULT_HASHPOWER) : buckets_(n),rehash_flag(0) {
+        new_cuckoohash_map(size_type n = DEFAULT_HASHPOWER) : buckets_(n),rehash_flag(false) {
             ;
         }
 
@@ -313,6 +313,7 @@ namespace libcuckoo {
             int running_max_thread;
 
             atomic<Handle> manager[HP_MAX_THREADS * ALIGN_RATIO];
+
         };
 
         struct ParRegisterDeleter {
@@ -358,6 +359,7 @@ namespace libcuckoo {
                 uint64_t ptr2 = get_ptr(par_ptr_2);
 
                 //if both have value or kick_locked  return false
+
                 if(par_ptr_1 != (uint64_t) nullptr && par_ptr_2 != (uint64_t) nullptr){
                     kick_lock_failure_data_check_l++;
                     return false;
@@ -1047,7 +1049,7 @@ namespace libcuckoo {
             ASSERT(kickHazaManager.empty() ,"--kickhazamanager not empty");
             ASSERT(check_unique(),"key not unique!");
             ASSERT(check_nolock(),"there are still locks in map!");
-            cout<<"thread "<<this_thread::get_id<<" calling migrate function"<<endl;
+            cout<<"thread "<<thread_id<<" calling migrate function"<<endl;
 
             size_type start_old_num = buckets_.get_item_num();
 
@@ -1089,6 +1091,7 @@ namespace libcuckoo {
         atomic<Handle> * block_when_rehashing(const hash_value hv ){
             atomic<Handle> * tmp_handle;
 
+
             while(true){
 
                 while( rehash_flag.load() ){pthread_yield();}
@@ -1124,6 +1127,8 @@ namespace libcuckoo {
         mutable buckets_t buckets_;
 
         KickHazaManager kickHazaManager;
+
+
 
     };
 

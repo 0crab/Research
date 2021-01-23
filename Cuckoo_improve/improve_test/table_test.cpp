@@ -234,6 +234,7 @@ void ycsb_op_func(YCSB_request * req){
 
 
 void insert_worker(int tid){
+    thread_id = tid;
 
     //Prevent tail debris
     size_t step =  total_count / insert_thread_num;
