@@ -266,61 +266,68 @@ namespace libcuckoo {
 
         };
 
-        struct alignas(8) Handle{
-            bool holded;
-            partial_t par;
-        };
+
 
         class KickHazaManager{
         public:
 
             static const int HP_MAX_THREADS = 512;
 
-            static const int ALIGN_RATIO = 128 / sizeof (Handle);
+            static const int ALIGN_RATIO = 128 / sizeof (size_type);
 
             KickHazaManager(){
-                for(int i = 0; i < HP_MAX_THREADS * ALIGN_RATIO;i++) manager[i].store(Handle{false,0});
+                for(int i = 0; i < HP_MAX_THREADS * ALIGN_RATIO;i++) manager[i].store(0ul);
                 running_max_thread = HP_MAX_THREADS;
             }
 
             inline void set_running_max_thread(int n){running_max_thread = n;}
 
             //must ensure partial correspond to an existing key
-            bool inquiry_is_registerd(partial_t par){
+            bool inquiry_is_registerd(size_type hash){
                 for(int i = 0; i < running_max_thread; i++){
                     if(i == thread_id) continue;
-                    Handle h =  manager[i * ALIGN_RATIO].load();
-                    if(h.holded && h.par == par){
+                    size_type store_record =  manager[i * ALIGN_RATIO].load();
+                    if(is_handled(store_record) && equal_hash(store_record,hash)){
                         return true;
                     }
                 }
                 return false;
             }
 
-            atomic<Handle> * register_par(int tid,partial_t par) {
-                manager[tid * ALIGN_RATIO].store(Handle{true,par});
+            atomic<size_type> * register_hash(int tid,size_type hash) {
+                manager[tid * ALIGN_RATIO].store(con_store_record(hash));
                 return &manager[tid * ALIGN_RATIO];
             }
 
             bool empty(){
                 for(int i  = 0 ; i < HP_MAX_THREADS ; i++){
-                    Handle th = manager[i * ALIGN_RATIO].load();
-                    if(th.holded == true) return false;
+                    size_type store_record = manager[i * ALIGN_RATIO].load();
+                    if(is_handled(store_record)) return false;
                 }
                 return true;
             }
 
+            inline size_type con_store_record(size_type hash){return hash | 1ul;}
+            inline bool is_handled(size_type store_record){return store_record & handle_mask;}
+            inline bool equal_hash(size_type store_record,size_type hash){
+                ASSERT(is_handled(store_record),"compare record not be handled");
+                return store_record & hash_mask == hash & hash_mask;
+            }
+
             int running_max_thread;
 
-            atomic<Handle> manager[HP_MAX_THREADS * ALIGN_RATIO];
+            atomic<size_type> manager[HP_MAX_THREADS * ALIGN_RATIO];
+
+            size_type hash_mask = ~0x1ul;
+            size_type handle_mask = 0x1ul;
 
         };
 
         struct ParRegisterDeleter {
-            void operator()(atomic<Handle> *l) const { l->store(Handle{false,0}); }
+            void operator()(atomic<size_type> *l) const { l->store(0ul); }
         };
 
-        using ParRegisterManager = std::unique_ptr<atomic<Handle>, ParRegisterDeleter>;
+        using ParRegisterManager = std::unique_ptr<atomic<size_type>, ParRegisterDeleter>;
 
         //return true when kick lock success
         //return false when find that not the kicking slots has been modified,both have value
@@ -354,6 +361,8 @@ namespace libcuckoo {
                 uint64_t par_ptr_1 = atomic_par_ptr_1.load();
                 partial_t par1 = get_partial(par_ptr_1);
                 uint64_t ptr1 = get_ptr(par_ptr_1);
+
+
                 uint64_t par_ptr_2 = atomic_par_ptr_2.load();
                 partial_t par2 = get_partial(par_ptr_2);
                 uint64_t ptr2 = get_ptr(par_ptr_2);
@@ -370,11 +379,11 @@ namespace libcuckoo {
                 //TODO using partial to tag only, may cause unnecessary conflict. Should use bucket-par unite tag
                 //TODO return the position information using parameter.Keep loading the position until
                 // it is released by other thread
-                if(par_ptr_1 != 0 && kickHazaManager.inquiry_is_registerd(get_partial(par_ptr_1))){
+                if(par_ptr_1 != 0 && kickHazaManager.inquiry_is_registerd(hashed_key(ITEM_KEY(ptr1),ITEM_KEY_LEN(ptr1)).hash)){
                     kick_lock_failure_haza_check_l++;
                     continue;
                 }
-                if(par_ptr_2 != 0 && kickHazaManager.inquiry_is_registerd(get_partial(par_ptr_2))){
+                if(par_ptr_2 != 0 && kickHazaManager.inquiry_is_registerd(hashed_key(ITEM_KEY(ptr2),ITEM_KEY_LEN(ptr2)).hash)){
                     kick_lock_failure_haza_check_l++;
                     continue;
                 }
@@ -393,8 +402,8 @@ namespace libcuckoo {
 
                 //check again to prevent that reader come between the first check and kick lock and finish
                 //reading the first slot would be locked
-                if( par_ptr_1 != 0 && kickHazaManager.inquiry_is_registerd(get_partial(par_ptr_1))
-                    ||par_ptr_2 != 0 && kickHazaManager.inquiry_is_registerd(get_partial(par_ptr_2))) {
+                if( par_ptr_1 != 0 && kickHazaManager.inquiry_is_registerd(hashed_key(ITEM_KEY(ptr1),ITEM_KEY_LEN(ptr1)).hash)
+                    ||par_ptr_2 != 0 && kickHazaManager.inquiry_is_registerd(hashed_key(ITEM_KEY(ptr2),ITEM_KEY_LEN(ptr2)).hash)) {
                     kick_unlock_par_ptr(atomic_par_ptr_1);
                     kick_unlock_par_ptr(atomic_par_ptr_2);
                     kick_lock_failure_haza_check_after_l++;
@@ -1088,19 +1097,19 @@ namespace libcuckoo {
 
         }
 
-        atomic<Handle> * block_when_rehashing(const hash_value hv ){
-            atomic<Handle> * tmp_handle;
+        atomic<size_type> * block_when_rehashing(const hash_value hv ){
+            atomic<size_type> * tmp_handle;
 
 
             while(true){
 
                 while( rehash_flag.load() ){pthread_yield();}
 
-                tmp_handle = kickHazaManager.register_par(thread_id,hv.partial);
+                tmp_handle = kickHazaManager.register_hash(thread_id,hv.hash);
 
                 if(!rehash_flag.load()) break;
 
-                tmp_handle->store({false,0});
+                tmp_handle->store(0ul);
 
             }
 
@@ -1171,7 +1180,7 @@ namespace libcuckoo {
 
             }catch (need_rehash){
 
-                pm.get()->store({false,0});
+                pm.get()->store(0ul);
 
                 bool old_flag = false;
                 if(rehash_flag.compare_exchange_strong(old_flag,true)){
@@ -1213,7 +1222,7 @@ namespace libcuckoo {
         Item *item = allocate_item(key, key_len, value, value_len);
         const hash_value hv = hashed_key(key, key_len);
         //protect from kick
-        ParRegisterManager a(kickHazaManager.register_par(thread_id,hv.partial));
+        ParRegisterManager a(kickHazaManager.register_hash(thread_id,hv.partial));
         while (true) {
             TwoBuckets b = get_two_buckets(hv);
             table_position pos = cuckoo_insert_loop(hv, b, key, key_len);
@@ -1236,7 +1245,7 @@ namespace libcuckoo {
     bool new_cuckoohash_map::erase(char *key, size_t key_len) {
         const hash_value hv = hashed_key(key, key_len);
         //protect from kick
-        ParRegisterManager a(kickHazaManager.register_par(thread_id,hv.partial));
+        ParRegisterManager a(kickHazaManager.register_hash(thread_id,hv.partial));
         while (true) {
             TwoBuckets b = get_two_buckets(hv);
             table_position pos = cuckoo_find(key, key_len, hv.partial, b.i1, b.i2);
