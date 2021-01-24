@@ -286,7 +286,7 @@ namespace libcuckoo {
             bool inquiry_is_registerd(size_type hash){
                 for(int i = 0; i < running_max_thread; i++){
                     if(i == thread_id) continue;
-                    size_type store_record =  manager[i * ALIGN_RATIO].load();
+                    size_type store_record =  manager[i * ALIGN_RATIO].load(std::memory_order_relaxed);
                     if(is_handled(store_record) && equal_hash(store_record,hash)){
                         return true;
                     }
@@ -301,7 +301,7 @@ namespace libcuckoo {
 
             bool empty(){
                 for(int i  = 0 ; i < HP_MAX_THREADS ; i++){
-                    size_type store_record = manager[i * ALIGN_RATIO].load();
+                    size_type store_record = manager[i * ALIGN_RATIO].load(std::memory_order_relaxed);
                     if(is_handled(store_record)) return false;
                 }
                 return true;
@@ -358,12 +358,12 @@ namespace libcuckoo {
                 ASSERT(loop_count<1000000,"MAYBE DEAD LOOP");
 
 
-                uint64_t par_ptr_1 = atomic_par_ptr_1.load();
+                uint64_t par_ptr_1 = atomic_par_ptr_1.load(std::memory_order_relaxed);
                 partial_t par1 = get_partial(par_ptr_1);
                 uint64_t ptr1 = get_ptr(par_ptr_1);
 
 
-                uint64_t par_ptr_2 = atomic_par_ptr_2.load();
+                uint64_t par_ptr_2 = atomic_par_ptr_2.load(std::memory_order_relaxed);
                 partial_t par2 = get_partial(par_ptr_2);
                 uint64_t ptr2 = get_ptr(par_ptr_2);
 
@@ -459,15 +459,15 @@ namespace libcuckoo {
         inline bool is_kick_locked(uint64_t par_ptr) const { return kick_lock_mask & par_ptr ;}
 
         inline bool try_kick_lock_par_ptr(atomic<uint64_t> & atomic_par_ptr){
-            uint64_t par_ptr = atomic_par_ptr.load();
+            uint64_t par_ptr = atomic_par_ptr.load(std::memory_order_relaxed);
             if(is_kick_locked(par_ptr)) return false;
-            return atomic_par_ptr.compare_exchange_strong(par_ptr,par_ptr | kick_lock_mask);
+            return atomic_par_ptr.compare_exchange_strong(par_ptr,par_ptr | kick_lock_mask,std::memory_order_relaxed);
         }
 
         inline void kick_unlock_par_ptr(atomic<uint64_t> & atomic_par_ptr){
-            uint64_t par_ptr = atomic_par_ptr.load();
+            uint64_t par_ptr = atomic_par_ptr.load(std::memory_order_relaxed);
             ASSERT(is_kick_locked(par_ptr),"try kick unlock an unlocked par_ptr ");
-            bool res = atomic_par_ptr.compare_exchange_strong(par_ptr, par_ptr & ~kick_lock_mask);
+            bool res = atomic_par_ptr.compare_exchange_strong(par_ptr, par_ptr & ~kick_lock_mask,std::memory_order_relaxed);
             ASSERT(res,"unlock failure")
         }
 
@@ -1054,7 +1054,7 @@ namespace libcuckoo {
         //guarantee that no other thread is working on this hashtable ==> haza_manageer is all empty
         void migrate_to_new(){
             //check there are no other threads working
-            ASSERT(rehash_flag.load(),"rehash not locked");
+            ASSERT(rehash_flag.load(std::memory_order_acquire),"rehash not locked");
             ASSERT(kickHazaManager.empty() ,"--kickhazamanager not empty");
             ASSERT(check_unique(),"key not unique!");
             ASSERT(check_nolock(),"there are still locks in map!");
@@ -1103,11 +1103,11 @@ namespace libcuckoo {
 
             while(true){
 
-                while( rehash_flag.load() ){pthread_yield();}
+                while( rehash_flag.load(std::memory_order_acquire) ){pthread_yield();}
 
                 tmp_handle = kickHazaManager.register_hash(thread_id,hv.hash);
 
-                if(!rehash_flag.load()) break;
+                if(!rehash_flag.load(std::memory_order_acquire)) break;
 
                 tmp_handle->store(0ul);
 
@@ -1183,18 +1183,18 @@ namespace libcuckoo {
                 pm.get()->store(0ul);
 
                 bool old_flag = false;
-                if(rehash_flag.compare_exchange_strong(old_flag,true)){
+                if(rehash_flag.compare_exchange_strong(old_flag,true,std::memory_order_relaxed)){
 
                     if(old_hashpower != hashpower()){
                         //ABA,other thread has finished rehash.release rehash_flag and redo
-                        rehash_flag.store(false);
+                        rehash_flag.store(false,std::memory_order_release);
                         continue;
                     }else{
                         wait_for_other_thread_finish();
 
                         migrate_to_new();
 
-                        rehash_flag.store(false);
+                        rehash_flag.store(false,std::memory_order_release);
 
                         continue;
                     }

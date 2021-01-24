@@ -28,7 +28,7 @@ public:
   class bucket {
   public:
     bucket() {
-        for (int i = 0; i < SLOT_PER_BUCKET * ATOMIC_ALIGN_RATIO; i++) values_[i].store((uint64_t)nullptr);
+        for (int i = 0; i < SLOT_PER_BUCKET * ATOMIC_ALIGN_RATIO; i++) values_[i].store((uint64_t)nullptr,std::memory_order_relaxed);
     }
 
     //TODO can't define under kick lock is occpupied or not
@@ -38,12 +38,12 @@ public:
     friend class bucket_container;
 
     uint64_t get_item_ptr(size_t i){
-        return values_[i * ATOMIC_ALIGN_RATIO].load();
+        return values_[i * ATOMIC_ALIGN_RATIO].load(std::memory_order_relaxed);
     }
 
     bool empty(){
         for(size_type i = 0; i < SLOT_PER_BUCKET * ATOMIC_ALIGN_RATIO ; i ++){
-            if(values_[i].load() != (uint64_t) nullptr)
+            if(values_[i].load(std::memory_order_relaxed) != (uint64_t) nullptr)
                 return false;
         }
         return true;
@@ -83,11 +83,11 @@ public:
     }
 
   size_type hashpower() const {
-    return hashpower_.load(std::memory_order_acquire);
+    return hashpower_.load(std::memory_order_relaxed);
   }
 
   void hashpower(size_type val) {
-    hashpower_.store(val, std::memory_order_release);
+    hashpower_.store(val, std::memory_order_relaxed);
   }
 
   size_type size() const { return size_type(1) << hashpower(); }
@@ -97,11 +97,11 @@ public:
 
 
   inline size_type read_from_slot(const bucket &b,size_type slot){
-      return b.values_[slot * ATOMIC_ALIGN_RATIO].load();
+      return b.values_[slot * ATOMIC_ALIGN_RATIO].load(std::memory_order_relaxed);
   }
 
   inline size_type read_from_bucket_slot(size_type ind,size_type slot){
-      return buckets_[ind].values_[slot * ATOMIC_ALIGN_RATIO].load();
+      return buckets_[ind].values_[slot * ATOMIC_ALIGN_RATIO].load(std::memory_order_relaxed);
   }
 
   inline atomic<size_t> & get_atomic_par_ptr(size_type ind,size_type slot){
@@ -112,30 +112,30 @@ public:
   // ptr has been packaged with partial
   bool try_insertKV(size_type ind, size_type slot, uint64_t insert_ptr) {
         bucket &b = buckets_[ind];
-        uint64_t old = b.values_[slot * ATOMIC_ALIGN_RATIO].load();
+        uint64_t old = b.values_[slot * ATOMIC_ALIGN_RATIO].load(std::memory_order_relaxed);
         if(old != (uint64_t)nullptr) return false;
-        return b.values_[slot * ATOMIC_ALIGN_RATIO].compare_exchange_strong(old,insert_ptr);
+        return b.values_[slot * ATOMIC_ALIGN_RATIO].compare_exchange_strong(old,insert_ptr,std::memory_order_relaxed);
   }
 
   bool try_updateKV(size_type ind, size_type slot,uint64_t old_ptr,uint64_t update_ptr) {
         bucket &b = buckets_[ind];
-        uint64_t old = b.values_[slot * ATOMIC_ALIGN_RATIO].load();
+        uint64_t old = b.values_[slot * ATOMIC_ALIGN_RATIO].load(std::memory_order_relaxed);
         if(old != old_ptr) return false;
-        return b.values_[slot * ATOMIC_ALIGN_RATIO].compare_exchange_strong(old,update_ptr);
+        return b.values_[slot * ATOMIC_ALIGN_RATIO].compare_exchange_strong(old,update_ptr,std::memory_order_relaxed);
   }
 
   bool try_eraseKV(size_type ind, size_type slot,uint64_t erase_ptr) {
         bucket &b = buckets_[ind];
-        uint64_t old = b.values_[slot * ATOMIC_ALIGN_RATIO].load();
+        uint64_t old = b.values_[slot * ATOMIC_ALIGN_RATIO].load(std::memory_order_relaxed);
         if(old != erase_ptr) return false;
-        return b.values_[slot * ATOMIC_ALIGN_RATIO].compare_exchange_strong(old,(uint64_t) nullptr);
+        return b.values_[slot * ATOMIC_ALIGN_RATIO].compare_exchange_strong(old,(uint64_t) nullptr,std::memory_order_relaxed);
   }
 
   //only for kick and rehash
   //par_ptr holding kick lock
   void set_ptr(size_type ind, size_type slot,uint64_t par_ptr){
       bucket &b = buckets_[ind];
-      b.values_[slot * ATOMIC_ALIGN_RATIO].store(par_ptr);
+      b.values_[slot * ATOMIC_ALIGN_RATIO].store(par_ptr,std::memory_order_relaxed);
   }
 
   uint64_t get_item_num(){
@@ -144,7 +144,7 @@ public:
       for(size_t i = 0; i < size(); i++ ){
            bucket &b = buckets_[i];
            for(int j =0; j< SLOT_PER_BUCKET;j++){
-               if(b.values_[j * ATOMIC_ALIGN_RATIO].load() != (uint64_t) nullptr) {
+               if(b.values_[j * ATOMIC_ALIGN_RATIO].load(std::memory_order_relaxed) != (uint64_t) nullptr) {
                    count++;
                }
            }
@@ -161,7 +161,7 @@ public:
       for(size_type i = 0 ; i < size() ; i++){
           bucket &b = buckets_[i];
           for(int j =0; j< SLOT_PER_BUCKET;j++){
-              if(b.values_[j * ATOMIC_ALIGN_RATIO].load() != (uint64_t) nullptr) {
+              if(b.values_[j * ATOMIC_ALIGN_RATIO].load(std::memory_order_relaxed) != (uint64_t) nullptr) {
                   count_vtr[j]++;
               }
           }
