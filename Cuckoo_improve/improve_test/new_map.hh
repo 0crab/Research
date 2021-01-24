@@ -1120,6 +1120,36 @@ namespace libcuckoo {
             while(!kickHazaManager.empty()){pthread_yield();}
         }
 
+
+        inline bool check_insert_unique(table_position pos,TwoBuckets b,hash_value hv,Item * item){
+            for(int i = 0; i < pos.slot ; i++) {
+                size_type  par_ptr = buckets_.read_from_bucket_slot(pos.index,pos.slot);
+                size_type par = get_partial(par_ptr);
+                size_type ptr = get_ptr(par_ptr);
+                if(par == hv.partial &&
+                    str_equal_to()(ITEM_KEY(ptr),ITEM_VALUE_LEN(ptr),ITEM_KEY(item),ITEM_VALUE_LEN(item))){
+                    //We don't care if we succeed
+                    buckets_.try_updateKV(pos.index,pos.slot,par_ptr,0);
+                    return false;
+                }
+            }
+            if(pos.index == b.i2){
+                for(int i = 0; i < slot_per_bucket() ; i++) {
+                    size_type  par_ptr = buckets_.read_from_bucket_slot(pos.index,pos.slot);
+                    size_type par = get_partial(par_ptr);
+                    size_type ptr = get_ptr(par_ptr);
+                    if(par == hv.partial &&
+                       str_equal_to()(ITEM_KEY(ptr),ITEM_VALUE_LEN(ptr),ITEM_KEY(item),ITEM_VALUE_LEN(item))){
+                        //We don't care if we succeed
+                        buckets_.try_updateKV(pos.index,pos.slot,par_ptr,0);
+                        return false;
+                    }
+                }
+            }
+            return true;
+        }
+
+
         //true hit , false miss
         bool find(char *key, size_t len);
 
@@ -1207,14 +1237,13 @@ namespace libcuckoo {
 
             if (pos.status == ok) {
                 if (buckets_.try_insertKV(pos.index, pos.slot, merge_partial(hv.partial, (uint64_t) item))) {
-                    return true;
+                    return check_insert_unique(pos,b,hv,item);
                 }
             } else {
                 //key_duplicated
                 return false;
             }
         }
-
 
     }
 
