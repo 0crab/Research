@@ -6,6 +6,7 @@
 #include "item.h"
 #include "assert_msg.h"
 #include "kick_haza_pointer.h"
+#include "brown_reclaim.h"
 
 
 namespace libcuckoo {
@@ -17,7 +18,7 @@ namespace libcuckoo {
     static const uint64_t ptr_mask = 0xffffffffffffull; //lower 48bit
     static const uint64_t kick_lock_mask = 1ull << (partial_offset - 1);
 
-    thread_local int thread_id;
+    thread_local int cuckoo_thread_id;
 
     //thread_local size_t kick_num_l;
 
@@ -285,7 +286,7 @@ namespace libcuckoo {
             //must ensure partial correspond to an existing key
             bool inquiry_is_registerd(size_type hash){
                 for(int i = 0; i < running_max_thread; i++){
-                    if(i == thread_id) continue;
+                    if(i == cuckoo_thread_id) continue;
                     size_type store_record =  manager[i * ALIGN_RATIO].load();
                     if(is_handled(store_record) && equal_hash(store_record,hash)){
                         return true;
@@ -1058,7 +1059,7 @@ namespace libcuckoo {
             ASSERT(kickHazaManager.empty() ,"--kickhazamanager not empty");
             ASSERT(check_unique(),"key not unique!");
             ASSERT(check_nolock(),"there are still locks in map!");
-            cout<<"thread "<<thread_id<<" calling migrate function"<<endl;
+            cout<<"thread "<<cuckoo_thread_id<<" calling migrate function"<<endl;
 
             size_type start_old_num = buckets_.get_item_num();
 
@@ -1105,7 +1106,7 @@ namespace libcuckoo {
 
                 while( rehash_flag.load() ){pthread_yield();}
 
-                tmp_handle = kickHazaManager.register_hash(thread_id,hv.hash);
+                tmp_handle = kickHazaManager.register_hash(cuckoo_thread_id,hv.hash);
 
                 if(!rehash_flag.load()) break;
 
