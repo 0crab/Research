@@ -276,7 +276,7 @@ namespace libcuckoo {
             static const int ALIGN_RATIO = 128 / sizeof (size_type);
 
             KickHazaManager(){
-                for(int i = 0; i < HP_MAX_THREADS * ALIGN_RATIO;i++) manager[i].store(0ul);
+                for(int i = 0; i < HP_MAX_THREADS * ALIGN_RATIO;i++) manager[i].store(0ul,std::memory_order_relaxed);
                 running_max_thread = HP_MAX_THREADS;
             }
 
@@ -286,7 +286,7 @@ namespace libcuckoo {
             bool inquiry_is_registerd(size_type hash){
                 for(int i = 0; i < running_max_thread; i++){
                     if(i == thread_id) continue;
-                    size_type store_record =  manager[i * ALIGN_RATIO].load(std::memory_order_relaxed);
+                    size_type store_record =  manager[i * ALIGN_RATIO].load(std::memory_order_acquire);
                     if(is_handled(store_record) && equal_hash(store_record,hash)){
                         return true;
                     }
@@ -295,13 +295,13 @@ namespace libcuckoo {
             }
 
             atomic<size_type> * register_hash(int tid,size_type hash) {
-                manager[tid * ALIGN_RATIO].store(con_store_record(hash));
+                manager[tid * ALIGN_RATIO].store(con_store_record(hash),std::memory_order_release);
                 return &manager[tid * ALIGN_RATIO];
             }
 
             bool empty(){
                 for(int i  = 0 ; i < HP_MAX_THREADS ; i++){
-                    size_type store_record = manager[i * ALIGN_RATIO].load(std::memory_order_relaxed);
+                    size_type store_record = manager[i * ALIGN_RATIO].load(std::memory_order_acquire);
                     if(is_handled(store_record)) return false;
                 }
                 return true;
@@ -324,7 +324,7 @@ namespace libcuckoo {
         };
 
         struct ParRegisterDeleter {
-            void operator()(atomic<size_type> *l) const { l->store(0ul); }
+            void operator()(atomic<size_type> *l) const { l->store(0ul,std::memory_order_release); }
         };
 
         using ParRegisterManager = std::unique_ptr<atomic<size_type>, ParRegisterDeleter>;
@@ -379,11 +379,11 @@ namespace libcuckoo {
                 //TODO using partial to tag only, may cause unnecessary conflict. Should use bucket-par unite tag
                 //TODO return the position information using parameter.Keep loading the position until
                 // it is released by other thread
-                if(par_ptr_1 != 0 && kickHazaManager.inquiry_is_registerd(hashed_key(ITEM_KEY(ptr1),ITEM_KEY_LEN(ptr1)).hash)){
+                if(ptr1 != 0 && kickHazaManager.inquiry_is_registerd(hashed_key(ITEM_KEY(ptr1),ITEM_KEY_LEN(ptr1)).hash)){
                     kick_lock_failure_haza_check_l++;
                     continue;
                 }
-                if(par_ptr_2 != 0 && kickHazaManager.inquiry_is_registerd(hashed_key(ITEM_KEY(ptr2),ITEM_KEY_LEN(ptr2)).hash)){
+                if(ptr2 != 0 && kickHazaManager.inquiry_is_registerd(hashed_key(ITEM_KEY(ptr2),ITEM_KEY_LEN(ptr2)).hash)){
                     kick_lock_failure_haza_check_l++;
                     continue;
                 }
@@ -1109,7 +1109,7 @@ namespace libcuckoo {
 
                 if(!rehash_flag.load(std::memory_order_acquire)) break;
 
-                tmp_handle->store(0ul);
+                tmp_handle->store(0ul,std::memory_order_release);
 
             }
 
@@ -1218,7 +1218,7 @@ namespace libcuckoo {
 
             }catch (need_rehash){
 
-                pm.get()->store(0ul);
+                pm.get()->store(0ul,std::memory_order_release);
 
                 bool old_flag = false;
                 if(rehash_flag.compare_exchange_strong(old_flag,true,std::memory_order_relaxed)){
