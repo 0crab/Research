@@ -286,7 +286,7 @@ namespace libcuckoo {
             bool inquiry_is_registerd(size_type hash){
                 for(int i = 0; i < running_max_thread; i++){
                     if(i == thread_id) continue;
-                    size_type store_record =  manager[i * ALIGN_RATIO].load(std::memory_order_acquire);
+                    size_type store_record =  manager[i * ALIGN_RATIO].load();
                     if(is_handled(store_record) && equal_hash(store_record,hash)){
                         return true;
                     }
@@ -295,13 +295,13 @@ namespace libcuckoo {
             }
 
             atomic<size_type> * register_hash(int tid,size_type hash) {
-                manager[tid * ALIGN_RATIO].store(con_store_record(hash),std::memory_order_release);
+                manager[tid * ALIGN_RATIO].store(con_store_record(hash));
                 return &manager[tid * ALIGN_RATIO];
             }
 
             bool empty(){
                 for(int i  = 0 ; i < HP_MAX_THREADS ; i++){
-                    size_type store_record = manager[i * ALIGN_RATIO].load(std::memory_order_acquire);
+                    size_type store_record = manager[i * ALIGN_RATIO].load();
                     if(is_handled(store_record)) return false;
                 }
                 return true;
@@ -324,7 +324,7 @@ namespace libcuckoo {
         };
 
         struct ParRegisterDeleter {
-            void operator()(atomic<size_type> *l) const { l->store(0ul,std::memory_order_release); }
+            void operator()(atomic<size_type> *l) const { l->store(0ul); }
         };
 
         using ParRegisterManager = std::unique_ptr<atomic<size_type>, ParRegisterDeleter>;
@@ -1054,7 +1054,7 @@ namespace libcuckoo {
         //guarantee that no other thread is working on this hashtable ==> haza_manageer is all empty
         void migrate_to_new(){
             //check there are no other threads working
-            ASSERT(rehash_flag.load(std::memory_order_acquire),"rehash not locked");
+            ASSERT(rehash_flag.load(),"rehash not locked");
             ASSERT(kickHazaManager.empty() ,"--kickhazamanager not empty");
             ASSERT(check_unique(),"key not unique!");
             ASSERT(check_nolock(),"there are still locks in map!");
@@ -1103,13 +1103,13 @@ namespace libcuckoo {
 
             while(true){
 
-                while( rehash_flag.load(std::memory_order_acquire) ){pthread_yield();}
+                while( rehash_flag.load() ){pthread_yield();}
 
                 tmp_handle = kickHazaManager.register_hash(thread_id,hv.hash);
 
-                if(!rehash_flag.load(std::memory_order_acquire)) break;
+                if(!rehash_flag.load()) break;
 
-                tmp_handle->store(0ul,std::memory_order_release);
+                tmp_handle->store(0ul);
 
             }
 
@@ -1218,21 +1218,21 @@ namespace libcuckoo {
 
             }catch (need_rehash){
 
-                pm.get()->store(0ul,std::memory_order_release);
+                pm.get()->store(0ul);
 
                 bool old_flag = false;
                 if(rehash_flag.compare_exchange_strong(old_flag,true,std::memory_order_relaxed)){
 
                     if(old_hashpower != hashpower()){
                         //ABA,other thread has finished rehash.release rehash_flag and redo
-                        rehash_flag.store(false,std::memory_order_release);
+                        rehash_flag.store(false);
                         continue;
                     }else{
                         wait_for_other_thread_finish();
 
                         migrate_to_new();
 
-                        rehash_flag.store(false,std::memory_order_release);
+                        rehash_flag.store(false);
 
                         continue;
                     }
