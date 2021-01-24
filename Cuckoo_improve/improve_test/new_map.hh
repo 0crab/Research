@@ -1125,7 +1125,7 @@ namespace libcuckoo {
             size_type  par_ptr;
             for(int i = 0; i < pos.slot ; i++) {
                 do{
-                    par_ptr = buckets_.read_from_bucket_slot(pos.index,pos.slot);
+                    par_ptr = buckets_.read_from_bucket_slot(pos.index,i);
                 }
                 while(is_kick_locked(par_ptr));
 
@@ -1141,7 +1141,7 @@ namespace libcuckoo {
             if(pos.index == b.i2){
                 for(int i = 0; i < slot_per_bucket() ; i++) {
                     do{
-                        par_ptr = buckets_.read_from_bucket_slot(pos.index,pos.slot);
+                        par_ptr = buckets_.read_from_bucket_slot(b.i1,i);
                     }
                     while(is_kick_locked(par_ptr));
                     size_type par = get_partial(par_ptr);
