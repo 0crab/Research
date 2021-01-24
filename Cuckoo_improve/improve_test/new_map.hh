@@ -1122,8 +1122,13 @@ namespace libcuckoo {
 
 
         inline bool check_insert_unique(table_position pos,TwoBuckets b,hash_value hv,Item * item){
+            size_type  par_ptr;
             for(int i = 0; i < pos.slot ; i++) {
-                size_type  par_ptr = buckets_.read_from_bucket_slot(pos.index,pos.slot);
+                do{
+                    par_ptr = buckets_.read_from_bucket_slot(pos.index,pos.slot);
+                }
+                while(is_kick_locked(par_ptr));
+
                 size_type par = get_partial(par_ptr);
                 size_type ptr = get_ptr(par_ptr);
                 if(par == hv.partial &&
@@ -1135,7 +1140,10 @@ namespace libcuckoo {
             }
             if(pos.index == b.i2){
                 for(int i = 0; i < slot_per_bucket() ; i++) {
-                    size_type  par_ptr = buckets_.read_from_bucket_slot(pos.index,pos.slot);
+                    do{
+                        par_ptr = buckets_.read_from_bucket_slot(pos.index,pos.slot);
+                    }
+                    while(is_kick_locked(par_ptr));
                     size_type par = get_partial(par_ptr);
                     size_type ptr = get_ptr(par_ptr);
                     if(par == hv.partial &&
