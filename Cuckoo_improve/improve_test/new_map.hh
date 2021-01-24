@@ -276,7 +276,7 @@ namespace libcuckoo {
             static const int ALIGN_RATIO = 128 / sizeof (size_type);
 
             KickHazaManager(){
-                for(int i = 0; i < HP_MAX_THREADS * ALIGN_RATIO;i++) manager[i].store(0ul,std::memory_order_relaxed);
+                for(int i = 0; i < HP_MAX_THREADS * ALIGN_RATIO;i++) manager[i].store(0ul);
                 running_max_thread = HP_MAX_THREADS;
             }
 
@@ -358,12 +358,12 @@ namespace libcuckoo {
                 ASSERT(loop_count<1000000,"MAYBE DEAD LOOP");
 
 
-                uint64_t par_ptr_1 = atomic_par_ptr_1.load(std::memory_order_relaxed);
+                uint64_t par_ptr_1 = atomic_par_ptr_1.load();
                 partial_t par1 = get_partial(par_ptr_1);
                 uint64_t ptr1 = get_ptr(par_ptr_1);
 
 
-                uint64_t par_ptr_2 = atomic_par_ptr_2.load(std::memory_order_relaxed);
+                uint64_t par_ptr_2 = atomic_par_ptr_2.load();
                 partial_t par2 = get_partial(par_ptr_2);
                 uint64_t ptr2 = get_ptr(par_ptr_2);
 
@@ -459,15 +459,15 @@ namespace libcuckoo {
         inline bool is_kick_locked(uint64_t par_ptr) const { return kick_lock_mask & par_ptr ;}
 
         inline bool try_kick_lock_par_ptr(atomic<uint64_t> & atomic_par_ptr){
-            uint64_t par_ptr = atomic_par_ptr.load(std::memory_order_relaxed);
+            uint64_t par_ptr = atomic_par_ptr.load();
             if(is_kick_locked(par_ptr)) return false;
-            return atomic_par_ptr.compare_exchange_strong(par_ptr,par_ptr | kick_lock_mask,std::memory_order_relaxed);
+            return atomic_par_ptr.compare_exchange_strong(par_ptr,par_ptr | kick_lock_mask);
         }
 
         inline void kick_unlock_par_ptr(atomic<uint64_t> & atomic_par_ptr){
-            uint64_t par_ptr = atomic_par_ptr.load(std::memory_order_relaxed);
+            uint64_t par_ptr = atomic_par_ptr.load();
             ASSERT(is_kick_locked(par_ptr),"try kick unlock an unlocked par_ptr ");
-            bool res = atomic_par_ptr.compare_exchange_strong(par_ptr, par_ptr & ~kick_lock_mask,std::memory_order_relaxed);
+            bool res = atomic_par_ptr.compare_exchange_strong(par_ptr, par_ptr & ~kick_lock_mask);
             ASSERT(res,"unlock failure")
         }
 
@@ -1221,7 +1221,7 @@ namespace libcuckoo {
                 pm.get()->store(0ul);
 
                 bool old_flag = false;
-                if(rehash_flag.compare_exchange_strong(old_flag,true,std::memory_order_relaxed)){
+                if(rehash_flag.compare_exchange_strong(old_flag,true)){
 
                     if(old_hashpower != hashpower()){
                         //ABA,other thread has finished rehash.release rehash_flag and redo
