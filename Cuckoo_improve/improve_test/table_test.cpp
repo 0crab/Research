@@ -402,6 +402,8 @@ int main(int argc, char **argv) {
 
     show_info_insert();
 
+    std::random_shuffle(requests, requests + total_count);
+
     ASSERT(store.check_unique(),"key not unique!");
     ASSERT(store.check_nolock(),"there are still locks in map!");
 
