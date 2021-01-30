@@ -495,6 +495,7 @@ namespace libcuckoo {
                 uint64_t read_ptr = get_ptr(par_ptr);
                 if (read_ptr == (size_type) nullptr ||
                     (partial != read_partial)) {
+                    buckets_.deallocator->read(cuckoo_thread_id);
                     continue;
                 } else if (str_equal_to()(ITEM_KEY(read_ptr), ITEM_KEY_LEN(read_ptr), key, key_len)) {
                     return i;
@@ -536,6 +537,7 @@ namespace libcuckoo {
 
                 if (read_ptr != (size_type) nullptr) {
                     if (partial != read_partial) {
+                        buckets_.deallocator->read(cuckoo_thread_id);
                         continue;
                     }
                     if (str_equal_to()(ITEM_KEY(read_ptr), ITEM_KEY_LEN(read_ptr), key, key_len)) {
@@ -1211,7 +1213,6 @@ namespace libcuckoo {
             buckets_.deallocator->read(cuckoo_thread_id);
             return true;
         }
-        buckets_.deallocator->read(cuckoo_thread_id);
         return false;
     }
 
@@ -1262,7 +1263,6 @@ namespace libcuckoo {
 
             if (pos.status == ok) {
                 if (buckets_.try_insertKV(pos.index, pos.slot, merge_partial(hv.partial, (uint64_t) item))) {
-                    buckets_.deallocator->read(cuckoo_thread_id);
                     return true;
                     //return check_insert_unique(pos,b,hv,item);
                 }
@@ -1271,6 +1271,7 @@ namespace libcuckoo {
                 buckets_.deallocator->read(cuckoo_thread_id);
                 return false;
             }
+
         }
 
     }
@@ -1286,7 +1287,7 @@ namespace libcuckoo {
             table_position pos = cuckoo_insert_loop(hv, b, key, key_len);
             if (pos.status == ok) {
                 if (buckets_.try_insertKV(pos.index, pos.slot, merge_partial(hv.partial, (uint64_t) item))) {
-                    buckets_.deallocator->read(cuckoo_thread_id);
+
                     return true;
                 }
             } else {
@@ -1294,7 +1295,6 @@ namespace libcuckoo {
                 uint64_t update_ptr = get_ptr(par_ptr);
                 if (check_ptr(update_ptr, key, key_len)) {
                     if (buckets_.try_updateKV(pos.index, pos.slot, par_ptr,merge_partial(hv.partial, (uint64_t) item))) {
-                        buckets_.deallocator->read(cuckoo_thread_id);
                         return false;
                     }
                 }
