@@ -120,6 +120,10 @@ namespace libcuckoo {
             buckets_.swap(other.buckets_);
         }
 
+        void swap_first(new_cuckoohash_map &other) noexcept {
+            buckets_.swap_first(other.buckets_);
+        }
+
         class hashpower_changed {};
         class need_rehash {};
 
@@ -363,12 +367,12 @@ namespace libcuckoo {
                 ASSERT(loop_count<1000000,"MAYBE DEAD LOOP");
 
 
-                uint64_t par_ptr_1 = atomic_par_ptr_1.load();
+                uint64_t par_ptr_1 = buckets_.deallocator->load(cuckoo_thread_id,atomic_par_ptr_1);
                 partial_t par1 = get_partial(par_ptr_1);
                 uint64_t ptr1 = get_ptr(par_ptr_1);
 
 
-                uint64_t par_ptr_2 = atomic_par_ptr_2.load();
+                uint64_t par_ptr_2 = buckets_.deallocator->load(cuckoo_thread_id,atomic_par_ptr_2);
                 partial_t par2 = get_partial(par_ptr_2);
                 uint64_t ptr2 = get_ptr(par_ptr_2);
 
@@ -867,6 +871,7 @@ namespace libcuckoo {
                 size_t loop_count = 0;
                 while (!done) {
                     loop_count ++;
+
                     ASSERT(loop_count < 1000000,"MAYBE DEAD LOOP");
                     const int depth =
                             cuckoopath_search(hp, cuckoo_path, b.i1, b.i2);
@@ -1068,7 +1073,7 @@ namespace libcuckoo {
             size_type start_old_num = buckets_.get_item_num();
 
             size_type new_hashpower = hashpower() + 1;
-            buckets_t new_buckets_(new_hashpower,cuckoo_thread_num);
+            buckets_t new_buckets_(new_hashpower);
             ASSERT(new_buckets_.hashpower()  ==  hashpower() +1,"--hashpower error");
             ASSERT(new_buckets_.get_item_num() == 0 ,"new bucket not empty");
 
@@ -1309,12 +1314,13 @@ namespace libcuckoo {
                 uint64_t erase_ptr = get_ptr(par_ptr);
                 if (check_ptr(erase_ptr, key, key_len)) {
                     if (buckets_.try_eraseKV(pos.index, pos.slot, par_ptr)) {
+                        buckets_.deallocator->read(cuckoo_thread_id);
                         return true;
                     }
                 }
             } else {
                 //return false only when key not find
-
+                buckets_.deallocator->read(cuckoo_thread_id);
                 return false;
             }
         }

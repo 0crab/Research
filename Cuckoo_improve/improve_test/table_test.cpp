@@ -394,7 +394,7 @@ int main(int argc, char **argv) {
 
     {
         new_cuckoohash_map tmp(init_hashpower,thread_num);
-        store.swap(tmp);
+        store.swap_first(tmp);
     }
 
     for(int i = 0; i < thread_num ;i ++) store.buckets_.deallocator->registerThread();

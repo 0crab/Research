@@ -83,9 +83,11 @@ public:
     }
 
     uint64_t load(size_t tid, std::atomic<uint64_t> &atomic_entry) {
+
         if (free_type == 0) {
+            ASSERT(false,"brown not define")
             uint64_t address = 0;
-            uint64_t par_ptr = 0;
+            uint64_t par_ptr = atomic_entry.load(std::memory_order_relaxed);
             do {
                 if (address != 0) reclaimer->unprotect(brown_tid, (D *) address);
                 address = atomic_entry.load(std::memory_order_relaxed) & brown_ptr_mask;
@@ -96,8 +98,9 @@ public:
             holder = address;
             return par_ptr;
         } else {
-            holder = atomic_entry.load(std::memory_order_relaxed) & brown_ptr_mask;
-            if (holder == 0) return holder;
+            uint64_t entry = atomic_entry.load(std::memory_order_relaxed);
+            holder =  entry & brown_ptr_mask;
+            if (holder == 0 ) return entry;
             //std::cout << "start: " << tid << " " << address << std::endl;
             reclaimer->template startOp<T>(brown_tid, (void *const *const) &reclaimer, 1);
             return atomic_entry.load(std::memory_order_relaxed);

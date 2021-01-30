@@ -69,13 +69,16 @@ public:
       deallocator = new brown6 (cuckoo_thread_num);
   }
 
+  bucket_container(size_type hp):hashpower_(hp),ready_to_destory(false){
+        buckets_ = new bucket[size()]();
+    }
   ~bucket_container() noexcept { destroy_buckets(); }
 
   void destroy_buckets() noexcept {
         bool still_have_item = false;
         for (size_type i = 0; i < size(); ++i) {
             for(size_type j = 0; j < SLOT_PER_BUCKET ;j++){
-                if(read_from_bucket_slot(i,j) != (uint64_t) nullptr){
+                if(buckets_[i].values_[j].load() != (uint64_t) nullptr){
                     still_have_item = true;
                     break;
                 }
@@ -89,7 +92,14 @@ public:
         size_t bc_hashpower = bc.hashpower();
         bc.hashpower(hashpower());
         hashpower(bc_hashpower);
-        deallocator=bc.deallocator;
+        std::swap(buckets_, bc.buckets_);
+    }
+
+    void swap_first(bucket_container &bc) noexcept {
+        size_t bc_hashpower = bc.hashpower();
+        bc.hashpower(hashpower());
+        hashpower(bc_hashpower);
+        this->deallocator = bc.deallocator;
         std::swap(buckets_, bc.buckets_);
     }
 
@@ -146,7 +156,13 @@ public:
         bucket &b = buckets_[ind];
         uint64_t old = b.values_[slot * ATOMIC_ALIGN_RATIO].load();
         if(old != erase_ptr) return false;
-        return b.values_[slot * ATOMIC_ALIGN_RATIO].compare_exchange_strong(old,(uint64_t) nullptr);
+        if(b.values_[slot * ATOMIC_ALIGN_RATIO].compare_exchange_strong(old,(uint64_t) nullptr)){
+            deallocator->free(old);
+            return true;
+        }else{
+            return false;
+        }
+
   }
 
     Item * allocate_item(char * key,size_t key_len,char * value,size_t value_len){
