@@ -47,16 +47,16 @@ struct Item{
     //char buf[];
 };
 
-Item * allocate_item(char * key,size_t key_len,char * value,size_t value_len){
-    //Item * p = (Item * )malloc(key_len + value_len + 2 * sizeof(uint32_t));
-    Item * p = new Item;
-    ASSERT(p!= nullptr,"malloc failure");
-    p->key_len = key_len;
-    p->value_len = value_len;
-    memcpy(ITEM_KEY(p),key,key_len);
-    memcpy(ITEM_VALUE(p),value,value_len);
-    return p;
-}
+//Item * allocate_item(char * key,size_t key_len,char * value,size_t value_len){
+//    //Item * p = (Item * )malloc(key_len + value_len + 2 * sizeof(uint32_t));
+//    Item * p = new Item;
+//    ASSERT(p!= nullptr,"malloc failure");
+//    p->key_len = key_len;
+//    p->value_len = value_len;
+//    memcpy(ITEM_KEY(p),key,key_len);
+//    memcpy(ITEM_VALUE(p),value,value_len);
+//    return p;
+//}
 
 #endif
 

@@ -235,6 +235,7 @@ void ycsb_op_func(YCSB_request * req){
 
 void insert_worker(int tid){
     cuckoo_thread_id = tid;
+    store.brown_init_thread(tid);
 
     //Prevent tail debris
     size_t step =  total_count / insert_thread_num;
@@ -281,6 +282,7 @@ void insert_worker(int tid){
 
 void worker(int tid) {
     cuckoo_thread_id = tid;
+    store.brown_init_thread(tid);
 
     size_t step =  total_count / thread_num;
     size_t num = tid == thread_num -1 ?  step + total_count % thread_num : step;
@@ -314,6 +316,7 @@ void worker(int tid) {
 
 
 void prepare(){
+
     if(!YCSB){
         double skew = distribution == 0? 0.0:0.99;
 
@@ -390,9 +393,11 @@ int main(int argc, char **argv) {
     show_info_before();
 
     {
-        new_cuckoohash_map tmp(init_hashpower);
+        new_cuckoohash_map tmp(init_hashpower,thread_num);
         store.swap(tmp);
     }
+
+    for(int i = 0; i < thread_num ;i ++) store.buckets_.deallocator->registerThread();
 
     prepare();
 

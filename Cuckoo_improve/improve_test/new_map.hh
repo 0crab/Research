@@ -3,7 +3,7 @@
 #include "cuckoohash_config.hh"
 #include "cuckoohash_util.hh"
 
-#include "item.h"
+
 #include "assert_msg.h"
 #include "kick_haza_pointer.h"
 #include "brown_reclaim.h"
@@ -18,7 +18,6 @@ namespace libcuckoo {
     static const uint64_t ptr_mask = 0xffffffffffffull; //lower 48bit
     static const uint64_t kick_lock_mask = 1ull << (partial_offset - 1);
 
-    thread_local int cuckoo_thread_id;
 
     //thread_local size_t kick_num_l;
 
@@ -112,8 +111,8 @@ namespace libcuckoo {
 
         static constexpr uint16_t slot_per_bucket() { return SLOT_PER_BUCKET; }
 
-        new_cuckoohash_map(size_type n = DEFAULT_HASHPOWER) : buckets_(n),rehash_flag(false) {
-            ;
+        new_cuckoohash_map(size_type n = DEFAULT_HASHPOWER,int tn=0) : buckets_(n,tn),rehash_flag(false) {
+            cuckoo_thread_num = tn;
         }
 
         //other hashmap must be abandon after swap
@@ -164,7 +163,8 @@ namespace libcuckoo {
             size_t a = bucket_num();
             for(size_t i = 0 ;i < bucket_num(); i++){
                 for(size_t j = 0; j < SLOT_PER_BUCKET;j ++){
-                    uint64_t par_ptr = buckets_.read_from_bucket_slot(i,j);
+                    //uint64_t par_ptr = buckets_.read_from_bucket_slot(i,j);
+                    uint64_t par_ptr = buckets_[i].values_[j].load();
                     if( par_ptr != (uint64_t)nullptr){
                         partial_t par = get_partial(par_ptr);
                         uint64_t ptr = get_ptr(par_ptr);
@@ -183,7 +183,8 @@ namespace libcuckoo {
             size_t a = bucket_num();
             for(size_t i = 0 ;i < bucket_num(); i++){
                 for(size_t j = 0; j < SLOT_PER_BUCKET;j ++){
-                    uint64_t par_ptr = buckets_.read_from_bucket_slot(i,j);
+                    //uint64_t par_ptr = buckets_.read_from_bucket_slot(i,j);
+                    uint64_t par_ptr = buckets_[i].values_[j].load();
                     if( par_ptr != (uint64_t)nullptr){
                         size_t tmp = par_ptr & ~partial_mask & ~ptr_mask;
                         if(tmp != 0ull)
@@ -195,12 +196,14 @@ namespace libcuckoo {
         }
 
         bool unique_in_two_bucket(size_type i1,size_type slot_ind,size_type i2){
-            uint64_t par_ptr =  buckets_.read_from_bucket_slot(i1,slot_ind);
+            //uint64_t par_ptr =  buckets_.read_from_bucket_slot(i1,slot_ind);
+            uint64_t par_ptr = buckets_[i1].values_[slot_ind].load();
             partial_t par = get_partial(par_ptr);
             uint64_t ptr = get_ptr(par_ptr);
             for(int i = 0 ; i < SLOT_PER_BUCKET;i++){
                 if(i == slot_ind) continue;
-                uint64_t com_par_ptr = buckets_.read_from_bucket_slot(i1,i);
+                //uint64_t com_par_ptr = buckets_.read_from_bucket_slot(i1,i);
+                uint64_t com_par_ptr = buckets_[i1].values_[i].load();
                 if(com_par_ptr == (uint64_t) nullptr) continue;
                 partial_t com_par = get_partial(com_par_ptr);
                 uint64_t com_ptr = get_ptr(com_par_ptr);
@@ -213,7 +216,8 @@ namespace libcuckoo {
             }
             if(i1 == i2) return true;
             for(int i = 0 ; i < SLOT_PER_BUCKET;i++){
-                uint64_t com_par_ptr = buckets_.read_from_bucket_slot(i2,i);
+                //uint64_t com_par_ptr = buckets_.read_from_bucket_slot(i2,i);
+                uint64_t com_par_ptr = buckets_[i2].values_[i].load();
                 if(com_par_ptr == (uint64_t) nullptr) continue;
                 partial_t com_par = get_partial(com_par_ptr);
                 uint64_t com_ptr = get_ptr(com_par_ptr);
@@ -472,7 +476,7 @@ namespace libcuckoo {
             ASSERT(res,"unlock failure")
         }
 
-        int try_read_from_bucket(const bucket &b, const partial_t partial,
+        int try_read_from_bucket( bucket &b, const partial_t partial,
                                  const char *key, size_type key_len) const {
 
             for (int i = 0; i < static_cast<int>(slot_per_bucket()); ++i) {
@@ -510,7 +514,7 @@ namespace libcuckoo {
 
         //false : key_duplicated. the slot is the position of deplicated key
         //true : have empty slot.the slot is the position of empty slot. -1 -> no empty slot
-        bool try_find_insert_bucket(const bucket &b, int &slot,
+        bool try_find_insert_bucket( bucket &b, int &slot,
                                     const partial_t partial, const char *key, size_type key_len) const {
             // Silence a warning from MSVC about partial being unused if is_simple.
             //(void)partial;
@@ -720,7 +724,7 @@ namespace libcuckoo {
             }
             {
 
-                const bucket &b = buckets_[first.bucket];
+                 bucket &b = buckets_[first.bucket];
 
                 //block when kick locked
                 size_type par_ptr;
@@ -745,7 +749,7 @@ namespace libcuckoo {
                 // index of the previous bucket
                 curr.bucket = alt_index(hp, prev.hv.partial, prev.bucket);
                 //const auto lock_manager = lock_one(hp, curr.bucket, TABLE_MODE());
-                const bucket &b = buckets_[curr.bucket];
+                bucket &b = buckets_[curr.bucket];
 
                 //block when kick locked
                 size_type par_ptr;
@@ -1064,7 +1068,7 @@ namespace libcuckoo {
             size_type start_old_num = buckets_.get_item_num();
 
             size_type new_hashpower = hashpower() + 1;
-            buckets_t new_buckets_(new_hashpower);
+            buckets_t new_buckets_(new_hashpower,cuckoo_thread_num);
             ASSERT(new_buckets_.hashpower()  ==  hashpower() +1,"--hashpower error");
             ASSERT(new_buckets_.get_item_num() == 0 ,"new bucket not empty");
 
@@ -1158,6 +1162,10 @@ namespace libcuckoo {
             return true;
         }
 
+        void brown_init_thread(int tid){
+            buckets_.deallocator->initThread(tid);
+        }
+
 
         //true hit , false miss
         bool find(char *key, size_t len);
@@ -1176,6 +1184,7 @@ namespace libcuckoo {
 
         KickHazaManager kickHazaManager;
 
+        int cuckoo_thread_num;
 
 
     };
@@ -1194,9 +1203,10 @@ namespace libcuckoo {
             size_t ptr = get_ptr(par_ptr);
             bool a = str_equal_to()(ITEM_KEY(ptr),ITEM_KEY_LEN(ptr),key,key_len);
             ASSERT(a,"key error");
-
+            buckets_.deallocator->read(cuckoo_thread_id);
             return true;
         }
+        buckets_.deallocator->read(cuckoo_thread_id);
         return false;
     }
 
@@ -1204,7 +1214,8 @@ namespace libcuckoo {
 
     bool new_cuckoohash_map::insert(char *key, size_t key_len, char *value, size_t value_len) {
         while(true){
-            Item *item = allocate_item(key, key_len, value, value_len);
+            //Item *item = allocate_item(key, key_len, value, value_len);
+            Item * item = buckets_.allocate_item(key,key_len,value,value_len);
             const hash_value hv = hashed_key(key, key_len);
 
             ParRegisterManager pm(block_when_rehashing(hv));
@@ -1246,10 +1257,13 @@ namespace libcuckoo {
 
             if (pos.status == ok) {
                 if (buckets_.try_insertKV(pos.index, pos.slot, merge_partial(hv.partial, (uint64_t) item))) {
-                    return check_insert_unique(pos,b,hv,item);
+                    buckets_.deallocator->read(cuckoo_thread_id);
+                    return true;
+                    //return check_insert_unique(pos,b,hv,item);
                 }
             } else {
                 //key_duplicated
+                buckets_.deallocator->read(cuckoo_thread_id);
                 return false;
             }
         }
@@ -1257,7 +1271,8 @@ namespace libcuckoo {
     }
 
     bool new_cuckoohash_map::insert_or_assign(char *key, size_t key_len, char *value, size_t value_len) {
-        Item *item = allocate_item(key, key_len, value, value_len);
+        //Item *item = allocate_item(key, key_len, value, value_len);
+        Item * item = buckets_.allocate_item(key,key_len,value,value_len);
         const hash_value hv = hashed_key(key, key_len);
         //protect from kick
         ParRegisterManager pm(block_when_rehashing(hv));
@@ -1266,6 +1281,7 @@ namespace libcuckoo {
             table_position pos = cuckoo_insert_loop(hv, b, key, key_len);
             if (pos.status == ok) {
                 if (buckets_.try_insertKV(pos.index, pos.slot, merge_partial(hv.partial, (uint64_t) item))) {
+                    buckets_.deallocator->read(cuckoo_thread_id);
                     return true;
                 }
             } else {
@@ -1273,6 +1289,7 @@ namespace libcuckoo {
                 uint64_t update_ptr = get_ptr(par_ptr);
                 if (check_ptr(update_ptr, key, key_len)) {
                     if (buckets_.try_updateKV(pos.index, pos.slot, par_ptr,merge_partial(hv.partial, (uint64_t) item))) {
+                        buckets_.deallocator->read(cuckoo_thread_id);
                         return false;
                     }
                 }
