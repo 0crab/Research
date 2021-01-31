@@ -215,6 +215,7 @@ int main(int argc, char **argv) {
     if (argc > 8)
         root_capacity = std::atoi(argv[8]);  //10000
     store = new cmap(root_capacity);
+
 //    cout << " threads: " << thread_number << " range: " << key_range << " count: " << total_count << " timer: "
 //         << timer_range << " skew: " << skew << " u:e:r = " << updatePercentage << ":" << ereasePercentage << ":"
 //         << readPercentage << endl;

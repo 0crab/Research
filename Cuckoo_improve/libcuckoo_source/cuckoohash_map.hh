@@ -585,28 +585,6 @@ public:
     return find_fn(key, [&val](const mapped_type &v) mutable { val = v; });
   }
 
-  /** Searches the table for @p key, and returns the associated value it
-   * finds. @c mapped_type must be @c CopyConstructible.
-   *
-   * @tparam K type of the key
-   * @param key the key to search for
-   * @return the value associated with the given key
-   * @throw std::out_of_range if the key is not found
-   */
-  template <typename K> mapped_type find(const K &key) const {
-    const hash_value hv = hashed_key(key);
-    //const auto b = snapshot_and_lock_two<normal_mode>(hv);
-      const size_type hp = hashpower();
-      const size_type i1 = index_hash(hp, hv.hash);
-      const size_type i2 = alt_index(hp, hv.partial, i1);
-    const table_position pos = cuckoo_find(key, hv.partial, i1, i2);
-    if (pos.status == ok) {
-      return buckets_[pos.index].mapped(pos.slot);
-    } else {
-      throw std::out_of_range("key not found in table");
-    }
-  }
-
   /**
    * Returns whether or not @p key is in the table. Equivalent to @ref
    * find_fn with a functor that does nothing.
@@ -614,6 +592,25 @@ public:
   template <typename K> bool contains(const K &key) const {
     return find_fn(key, [](const mapped_type &) {});
   }
+
+    /** Searches the table for @p key, and returns the associated value it
+     * finds. @c mapped_type must be @c CopyConstructible.
+     *
+     * @tparam K type of the key
+     * @param key the key to search for
+     * @return the value associated with the given key
+     * @throw std::out_of_range if the key is not found
+     */
+    template <typename K> mapped_type find(const K &key) const {
+        const hash_value hv = hashed_key(key);
+        const auto b = snapshot_and_lock_two<normal_mode>(hv);
+        const table_position pos = cuckoo_find(key, hv.partial, b.i1, b.i2);
+        if (pos.status == ok) {
+            return buckets_[pos.index].mapped(pos.slot);
+        } else {
+            throw std::out_of_range("key not found in table");
+        }
+    }
 
   /**
    * Updates the value associated with @p key to @p val. Equivalent to
