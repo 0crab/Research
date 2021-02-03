@@ -6,6 +6,8 @@
 #include <cstddef>
 #include <limits>
 
+#include "assert_msg.h"
+
 namespace libcuckoo {
 
 //! The default maximum number of keys per bucket

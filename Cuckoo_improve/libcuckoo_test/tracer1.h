@@ -4,6 +4,7 @@
 #include <iostream>
 #include <random>
 #include <chrono>
+#include <mutex>
 #include <fstream>
 #include <thread>
 #include <pthread.h>
@@ -136,9 +137,9 @@ char *cm[4] = {
 const char *existingFilePath = "./testfile.dat";
 
 namespace ycsb {
-char *loadpath = "/kolla/asterixdb/YCSB/load-a-200m-8B.dat";
+char *loadpath = "load-a.dat";
 
-char *runpath = "/kolla/asterixdb/YCSB/load-a-200m-8B.dat";
+char *runpath = "run-a.dat";
 
 char *YCSB_command[5] = {"READ", "INSERT", "DELETE", "UPDATE", "SCAN"};
 

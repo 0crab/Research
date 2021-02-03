@@ -7,7 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "tracer1.h"
-#include "../libcuckoo_source/cuckoohash_map.hh"
+#include "../improve_test/new_map.hh"
 
 #define DEFAULT_THREAD_NUM (8)
 #define DEFAULT_KEYS_COUNT (1 << 20)
@@ -16,79 +16,10 @@
 #define COUNT_HASH     1
 
 using namespace ycsb;
+using namespace libcuckoo;
 
-#if WITH_STRING == 1
-typedef libcuckoo::cuckoohash_map<string, string> cmap;
-#else
-constexpr uint32_t kHashSeed = 7079;
 
-uint64_t MurmurHash64A(const void *key, size_t len) {
-    const uint64_t m = 0xc6a4a7935bd1e995ull;
-    const size_t r = 47;
-    uint64_t seed = kHashSeed;
-
-    uint64_t h = seed ^(len * m);
-
-    const auto *data = (const uint64_t *) key;
-    const uint64_t *end = data + (len / 8);
-
-    while (data != end) {
-        uint64_t k = *data++;
-
-        k *= m;
-        k ^= k >> r;
-        k *= m;
-
-        h ^= k;
-        h *= m;
-    }
-
-    const auto *data2 = (const unsigned char *) data;
-
-    switch (len & 7ull) {
-        case 7:
-            h ^= uint64_t(data2[6]) << 48ull;
-        case 6:
-            h ^= uint64_t(data2[5]) << 40ull;
-        case 5:
-            h ^= uint64_t(data2[4]) << 32ull;
-        case 4:
-            h ^= uint64_t(data2[3]) << 24ull;
-        case 3:
-            h ^= uint64_t(data2[2]) << 16ull;
-        case 2:
-            h ^= uint64_t(data2[1]) << 8ull;
-        case 1:
-            h ^= uint64_t(data2[0]);
-            h *= m;
-    };
-
-    h ^= h >> r;
-    h *= m;
-    h ^= h >> r;
-
-    return h;
-}
-
-template<typename T>
-struct str_equal_to {
-    bool operator()(const T first, T second) {
-        if (std::strcmp(first, second) == 0) return true;
-        else return false;
-    }
-};
-
-template<typename T>
-struct str_hash {
-    std::size_t operator()(const T &str) const noexcept {
-        return MurmurHash64A((char *) str, std::strlen(str));
-    }
-};
-
-typedef libcuckoo::cuckoohash_map<char *, char *, str_hash<char *>, str_equal_to<char *>, std::allocator<std::pair<const char *, char *>>> cmap;
-#endif
-
-cmap *store;
+new_cuckoohash_map store(1);
 
 std::vector<YCSB_request *> loads;
 
@@ -128,7 +59,7 @@ int readPercentage = (totalPercentage - updatePercentage - erasePercentage);
 
 struct target {
     int tid;
-    cmap *store;
+    //cmap *store;
 };
 
 pthread_t *workers;
@@ -144,7 +75,7 @@ void simpleInsert() {
         store->insert(string(loads[i]->getKey()), std::string(loads[i]->getVal()));
         assert(std::strcmp(store->find(loads[i]->getKey()).c_str(), loads[i]->getVal()) == 0);
 #else
-        store->insert(loads[i]->getKey(), loads[i]->getVal());
+        store.insert(loads[i]->getKey()-4, loads[i]->keyLength(),loads[i]->getVal(),loads[i]->valLength());
         /*char query[255];
         std::memset(query, 0, 255);
         std::memcpy(query, loads[i]->getKey(), loads[i]->keyLength());
@@ -154,10 +85,10 @@ void simpleInsert() {
         assert(strcmp(query, loads[i]->getKey()) == 0);
         char *value = store->find((char *) query);
         char *realv = loads[i]->getVal();*/
-        assert(std::strcmp(store->find(loads[i]->getKey()), loads[i]->getVal()) == 0);
+        //assert(std::strcmp(store.find(loads[i]->getKey()-4,runs[i]->keyLength()) )== 0);
 #endif
     }
-    cout << inserted << " " << tracer.getRunTime() << " " << store->size() << endl;
+    cout << inserted << " " << tracer.getRunTime() << " " << store.get_item_num() << endl;
 }
 
 void *insertWorker(void *args) {
@@ -167,7 +98,7 @@ void *insertWorker(void *args) {
 #if WITH_STRING
         store->insert(string(loads[i]->getKey()), std::string(loads[i]->getVal()));
 #else
-        store->insert(loads[i]->getKey(), loads[i]->getVal());
+        store.insert(loads[i]->getKey()-4,loads[i]->keyLength() ,loads[i]->getVal(),loads[i]->valLength());
 #endif
         inserted++;
     }
@@ -187,21 +118,14 @@ void *measureWorker(void *args) {
                 switch (static_cast<int>(runs[i]->getOp())) {
                // switch(3){
 		   case 0: {
-#if WITH_STRING
-                        string ret = store->find(string(runs[i]->getKey()));
-#else
-                        string ret = store->find(runs[i]->getKey());
-#endif
-                        if (ret.compare("") /*&& (dummyVal.compare(runs[i]->getVal()) == 0)*/) rhit++;
-                        else rfail++;
+                        if( store.find(runs[i]->getKey()-4,runs[i]->keyLength()))
+                            rhit++;
+                        else
+                            rfail++;
                         break;
                     }
                     case 1: {
-#if WITH_STRING
-                        bool ret = store->insert(string(runs[i]->getKey()), string(runs[i]->getVal()));
-#else
-                        bool ret = store->insert(runs[i]->getKey(), runs[i]->getVal());
-#endif
+                        bool ret = store.insert(runs[i]->getKey()-4, runs[i]->keyLength(), runs[i]->getVal(),runs[i]->valLength());
                         if (ret) mhit++;
                         else mfail++;
                         break;
@@ -210,7 +134,7 @@ void *measureWorker(void *args) {
 #if WITH_STRING
                         bool ret = store->erase(string(runs[i]->getKey()));
 #else
-                        bool ret = store->erase(runs[i]->getKey());
+                        bool ret = store.erase(runs[i]->getKey()-4,runs[i]->keyLength());
 #endif
                         if (ret) mhit++;
                         else mfail++;
@@ -220,10 +144,10 @@ void *measureWorker(void *args) {
 #if WITH_STRING
                         bool ret = store->update(string(runs[i]->getKey()), string(runs[i]->getVal()));
 #else
-                        bool ret = store->update(runs[i]->getKey(), runs[i]->getVal());
+                        bool ret = store.insert_or_assign(runs[i]->getKey()-4,runs[i]->keyLength(), runs[i]->getVal(),runs[i]->valLength());
 #endif
                         if (ret) mhit++;
-                        else mfail++;
+                        else mhit++;
                         break;
                     }
                     default:
@@ -252,7 +176,7 @@ void prepare() {
     output = new stringstream[thread_number];
     for (int i = 0; i < thread_number; i++) {
         parms[i].tid = i;
-        parms[i].store = store;
+        //parms[i].store = store;
     }
 }
 
@@ -298,7 +222,11 @@ int main(int argc, char **argv) {
     }
     if (argc > 8)
         root_capacity = std::atoi(argv[8]);
-    store = new cmap(root_capacity);
+    {
+        new_cuckoohash_map tmp(25);
+        store.swap(tmp);
+    }
+
     YCSBLoader loader(loadpath, key_range);
     loads = loader.load();
     key_range = loader.size();
@@ -310,15 +238,14 @@ int main(int argc, char **argv) {
     total_count = runner.size();
     cout << " threads: " << thread_number << " range: " << key_range << " count: " << total_count << " timer: "
          << timer_range << " skew: " << skew << " u:e:r = " << updatePercentage << ":" << erasePercentage << ":"
-         << readPercentage << " hash size: " << store->bucket_count() << " capacity: " << store->capacity()
-         << " load factor: " << store->load_factor() << " loads: " << store->size() << endl;
+         << readPercentage <<  " capacity: " << store.bucket_num()
+         <<" load factor: "  << " loads: " << store.get_item_num() << endl;
     cout << "multiinsert" << endl;
     multiWorkers();
     cout << "read operations: " << read_success << " read failure: " << read_failure << " modify operations: "
          << modify_success << " modify failure: " << modify_failure << " throughput: "
          << (double) (read_success + read_failure + modify_success + modify_failure) * thread_number / total_time
-         << " hash size: " << store->bucket_count() << " capacity: " << store->capacity() << " load factor: "
-         << store->load_factor() << endl;
+         << " capacity: " << store.bucket_num() << " load factor: "<< endl;
     loads.clear();
     runs.clear();
     finish();
