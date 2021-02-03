@@ -75,7 +75,7 @@ void simpleInsert() {
         store->insert(string(loads[i]->getKey()), std::string(loads[i]->getVal()));
         assert(std::strcmp(store->find(loads[i]->getKey()).c_str(), loads[i]->getVal()) == 0);
 #else
-        store.insert(loads[i]->getKey()-4, loads[i]->keyLength(),loads[i]->getVal(),loads[i]->valLength());
+        store.insert(loads[i]->getKey(), loads[i]->keyLength()-4,loads[i]->getVal(),loads[i]->valLength());
         /*char query[255];
         std::memset(query, 0, 255);
         std::memcpy(query, loads[i]->getKey(), loads[i]->keyLength());
@@ -98,7 +98,7 @@ void *insertWorker(void *args) {
 #if WITH_STRING
         store->insert(string(loads[i]->getKey()), std::string(loads[i]->getVal()));
 #else
-        store.insert(loads[i]->getKey()-4,loads[i]->keyLength() ,loads[i]->getVal(),loads[i]->valLength());
+        store.insert(loads[i]->getKey(),loads[i]->keyLength()-4 ,loads[i]->getVal(),loads[i]->valLength());
 #endif
         inserted++;
     }
@@ -118,14 +118,14 @@ void *measureWorker(void *args) {
                 switch (static_cast<int>(runs[i]->getOp())) {
                // switch(3){
 		   case 0: {
-                        if( store.find(runs[i]->getKey()-4,runs[i]->keyLength()))
+                        if( store.find(runs[i]->getKey(),runs[i]->keyLength()-4))
                             rhit++;
                         else
                             rfail++;
                         break;
                     }
                     case 1: {
-                        bool ret = store.insert(runs[i]->getKey()-4, runs[i]->keyLength(), runs[i]->getVal(),runs[i]->valLength());
+                        bool ret = store.insert(runs[i]->getKey(), runs[i]->keyLength()-4, runs[i]->getVal(),runs[i]->valLength());
                         if (ret) mhit++;
                         else mfail++;
                         break;
@@ -134,7 +134,7 @@ void *measureWorker(void *args) {
 #if WITH_STRING
                         bool ret = store->erase(string(runs[i]->getKey()));
 #else
-                        bool ret = store.erase(runs[i]->getKey()-4,runs[i]->keyLength());
+                        bool ret = store.erase(runs[i]->getKey(),runs[i]->keyLength()-4);
 #endif
                         if (ret) mhit++;
                         else mfail++;
@@ -144,7 +144,7 @@ void *measureWorker(void *args) {
 #if WITH_STRING
                         bool ret = store->update(string(runs[i]->getKey()), string(runs[i]->getVal()));
 #else
-                        bool ret = store.insert_or_assign(runs[i]->getKey()-4,runs[i]->keyLength(), runs[i]->getVal(),runs[i]->valLength());
+                        bool ret = store.insert_or_assign(runs[i]->getKey(),runs[i]->keyLength()-4, runs[i]->getVal(),runs[i]->valLength());
 #endif
                         if (ret) mhit++;
                         else mhit++;

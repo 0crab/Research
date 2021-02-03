@@ -137,9 +137,9 @@ char *cm[4] = {
 const char *existingFilePath = "./testfile.dat";
 
 namespace ycsb {
-char *loadpath = "load-a.dat";
+char *loadpath = "/mnt/nvme/czl/YCSB/load-c-200m-8B.dat";
 
-char *runpath = "run-a.dat";
+char *runpath = "/mnt/nvme/czl/YCSB/run-c-200m-8B.dat";
 
 char *YCSB_command[5] = {"READ", "INSERT", "DELETE", "UPDATE", "SCAN"};
 
