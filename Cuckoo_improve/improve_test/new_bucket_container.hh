@@ -22,9 +22,8 @@ namespace libcuckoo {
 
     thread_local int cuckoo_thread_id;
 
-#define alloc allocator_new
-#define pool pool_perthread_and_shared
-typedef brown_reclaim<Item , alloc<Item>, pool<>, reclaimer_ebr_token<>> brown6;
+
+typedef brown_reclaim<Item , allocator_new<Item>, pool_perthread_and_shared<>, reclaimer_ebr_token<>> brown6;
 
 template <std::size_t SLOT_PER_BUCKET>
 class bucket_container {

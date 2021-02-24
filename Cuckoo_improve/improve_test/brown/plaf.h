@@ -9,7 +9,7 @@
 #define MACHINECONSTANTS_H
 
 #ifndef MAX_THREADS_POW2
-#define MAX_THREADS_POW2 128 // MUST BE A POWER OF TWO, since this is used for some bitwise operations
+#define MAX_THREADS_POW2 512 // MUST BE A POWER OF TWO, since this is used for some bitwise operations
 #endif
 #ifndef LOGICAL_PROCESSORS
 #define LOGICAL_PROCESSORS MAX_THREADS_POW2

@@ -44,7 +44,7 @@ protected:
     using ihazard<T, D>::thread_number;
 
 public:
-    brown_reclaim(size_t total_thread) : thread_num(total_thread + 1) {
+    brown_reclaim(size_t total_thread) : thread_num(total_thread) {
         alloc = new Allocator(thread_num, nullptr);
         pool = new Pool(thread_num, alloc, nullptr);
         reclaimer = new Reclaimer(thread_num, pool, nullptr);
@@ -149,9 +149,9 @@ public:
         reclaimer->retire(brown_tid, (D *) (entry & brown_ptr_mask));
         if (free_type != 0) {
             //alloc->deallocate(ftid, (T *) ptr);
-            /*reclaimer->template startOp<T>(ftid, (void *const *const) &reclaimer, 1);
-            reclaimer->endOp(ftid);*/
-            reclaimer->rotateEpochBags(brown_tid);
+            reclaimer->template startOp<T>(brown_tid, (void *const *const) &reclaimer, 1);
+            //reclaimer->endOp(ftid);*/
+            //reclaimer->rotateEpochBags(brown_tid);
         }
         //std::free((T *) ptr);
         return true;
