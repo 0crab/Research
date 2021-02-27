@@ -396,7 +396,7 @@ int main(int argc, char **argv) {
         store.swap_first(tmp);
     }
 
-    for(int i = 0; i < thread_num ;i ++) store.buckets_.deallocator->registerThread();
+
 
     prepare();
 

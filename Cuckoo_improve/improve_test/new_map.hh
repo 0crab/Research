@@ -6,7 +6,7 @@
 
 #include "assert_msg.h"
 #include "kick_haza_pointer.h"
-#include "brown_reclaim.h"
+//#include "brown_reclaim.h"
 
 
 namespace libcuckoo {
@@ -367,12 +367,12 @@ namespace libcuckoo {
                 ASSERT(loop_count<1000000,"MAYBE DEAD LOOP");
 
 
-                uint64_t par_ptr_1 = buckets_.deallocator->load(cuckoo_thread_id,atomic_par_ptr_1);
+                uint64_t par_ptr_1 =(uint64_t) buckets_.deallocator->load(cuckoo_thread_id,atomic_par_ptr_1);
                 partial_t par1 = get_partial(par_ptr_1);
                 uint64_t ptr1 = get_ptr(par_ptr_1);
 
 
-                uint64_t par_ptr_2 = buckets_.deallocator->load(cuckoo_thread_id,atomic_par_ptr_2);
+                uint64_t par_ptr_2 = (uint64_t) buckets_.deallocator->load(cuckoo_thread_id,atomic_par_ptr_2);
                 partial_t par2 = get_partial(par_ptr_2);
                 uint64_t ptr2 = get_ptr(par_ptr_2);
 
@@ -1269,7 +1269,7 @@ namespace libcuckoo {
             } else {
                 //key_duplicated
                 //buckets_.deallocator->read(cuckoo_thread_id);
-                buckets_.deallocator->free((uint64_t)item);
+                buckets_.deallocator->deallocate(cuckoo_thread_id,item);
                 return false;
             }
 

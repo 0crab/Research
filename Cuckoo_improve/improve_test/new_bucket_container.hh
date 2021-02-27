@@ -9,12 +9,13 @@
 #include <memory>
 #include <type_traits>
 #include <utility>
-#include "ihazard.h"
+//#include "ihazard.h"
 //#include "brown_reclaim.h"
 #include "cuckoohash_util.hh"
 
 #include "item.h"
-#include "brown_reclaim.h"
+//#include "brown_reclaim.h"
+#include "my_reclaimer/reclaimer_ebr_token.h"
 
 namespace libcuckoo {
 
@@ -23,7 +24,6 @@ namespace libcuckoo {
     thread_local int cuckoo_thread_id;
 
 
-typedef brown_reclaim<Item , allocator_new<Item>, pool_perthread_and_shared<>, reclaimer_ebr_token<>> brown6;
 
 template <std::size_t SLOT_PER_BUCKET>
 class bucket_container {
@@ -65,7 +65,7 @@ public:
 
   bucket_container(size_type hp,int cuckoo_thread_num):hashpower_(hp),ready_to_destory(false){
       buckets_ = new bucket[size()]();
-      deallocator = new brown6 (cuckoo_thread_num);
+      deallocator = new Reclaimer_ebr_token(cuckoo_thread_num);
   }
 
   bucket_container(size_type hp):hashpower_(hp),ready_to_destory(false){
@@ -117,12 +117,12 @@ public:
 
 
   inline size_type read_from_slot( bucket &b,size_type slot){
-      return deallocator->load(cuckoo_thread_id,b.values_[slot * ATOMIC_ALIGN_RATIO]);
+      return (size_type)deallocator->load(cuckoo_thread_id,b.values_[slot * ATOMIC_ALIGN_RATIO]);
       //return b.values_[slot * ATOMIC_ALIGN_RATIO].load();
   }
 
   inline size_type read_from_bucket_slot(size_type ind,size_type slot){
-      return deallocator->load(cuckoo_thread_id,std::ref( buckets_[ind].values_[slot * ATOMIC_ALIGN_RATIO]));
+      return (size_type)deallocator->load(cuckoo_thread_id,std::ref( buckets_[ind].values_[slot * ATOMIC_ALIGN_RATIO]));
       //return buckets_[ind].values_[slot * ATOMIC_ALIGN_RATIO].load();
   }
 
@@ -144,7 +144,7 @@ public:
         uint64_t old = b.values_[slot * ATOMIC_ALIGN_RATIO].load();
         if(old != old_ptr) return false;
         if(b.values_[slot * ATOMIC_ALIGN_RATIO].compare_exchange_strong(old,update_ptr)){
-            deallocator->free(old);
+            deallocator->deallocate(cuckoo_thread_id,(Item *)old);
             return true;
         }else{
             return false;
@@ -156,7 +156,7 @@ public:
         uint64_t old = b.values_[slot * ATOMIC_ALIGN_RATIO].load();
         if(old != erase_ptr) return false;
         if(b.values_[slot * ATOMIC_ALIGN_RATIO].compare_exchange_strong(old,(uint64_t) nullptr)){
-            deallocator->free(old);
+            deallocator->deallocate(cuckoo_thread_id,(Item *)old);
             return true;
         }else{
             return false;
@@ -166,7 +166,7 @@ public:
 
     Item * allocate_item(char * key,size_t key_len,char * value,size_t value_len){
         //Item * p = (Item * )malloc(key_len + value_len + 2 * sizeof(uint32_t));
-        Item * p =  (Item *) deallocator->allocate(cuckoo_thread_id);;
+        Item * p =  (Item *) deallocator->allocate(cuckoo_thread_id,ITEM_LEN_ALLOC(key_len,value_len));
         ASSERT(p!= nullptr,"malloc failure");
         p->key_len = key_len;
         p->value_len = value_len;
@@ -225,7 +225,7 @@ public:
       ready_to_destory = true;
   }
 
-    ihazard<Item> *deallocator;
+    Reclaimer_ebr_token *deallocator;
 private:
     bool ready_to_destory;
 
