@@ -150,7 +150,7 @@ public:
         if (free_type != 0) {
             //alloc->deallocate(ftid, (T *) ptr);
             reclaimer->template startOp<T>(brown_tid, (void *const *const) &reclaimer, 1);
-            //reclaimer->endOp(ftid);*/
+            reclaimer->endOp(brown_tid);
             //reclaimer->rotateEpochBags(brown_tid);
         }
         //std::free((T *) ptr);

@@ -201,7 +201,6 @@ void op_func(const Request &req) {
 
 void ycsb_op_func(YCSB_request * req){
     switch (req->getOp()) {
-
         //switch(Find){
         case lookup : {
             if (store.find(req->getKey(), req->keyLength()-4))

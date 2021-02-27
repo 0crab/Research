@@ -1268,7 +1268,8 @@ namespace libcuckoo {
                 }
             } else {
                 //key_duplicated
-                buckets_.deallocator->read(cuckoo_thread_id);
+                //buckets_.deallocator->read(cuckoo_thread_id);
+                buckets_.deallocator->free((uint64_t)item);
                 return false;
             }
 
