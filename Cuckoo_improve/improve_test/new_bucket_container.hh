@@ -15,7 +15,8 @@
 
 #include "item.h"
 //#include "brown_reclaim.h"
-#include "my_reclaimer/reclaimer_ebr_token.h"
+//#include "my_reclaimer/reclaimer_ebr_token.h"
+#include "my_reclaimer/reclaimer_debra.h"
 
 namespace libcuckoo {
 
@@ -65,7 +66,7 @@ public:
 
   bucket_container(size_type hp,int cuckoo_thread_num):hashpower_(hp),ready_to_destory(false){
       buckets_ = new bucket[size()]();
-      deallocator = new Reclaimer_ebr_token(cuckoo_thread_num);
+      deallocator = new Reclaimer_debra(cuckoo_thread_num);
   }
 
   bucket_container(size_type hp):hashpower_(hp),ready_to_destory(false){
@@ -225,7 +226,7 @@ public:
       ready_to_destory = true;
   }
 
-    Reclaimer_ebr_token *deallocator;
+    Reclaimer_debra *deallocator;
 private:
     bool ready_to_destory;
 
