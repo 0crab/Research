@@ -2,8 +2,8 @@
 #define MY_RECLAIMER_RECLAIMER_DEBRA_H
 
 #include "buffer_queue.h"
-#include "multi_level_queue.h"
-//#include "allocator_new.h"
+//#include "multi_level_queue.h"
+#include "allocator_new.h"
 #include <atomic>
 
 #define DEBRA_DISABLE_READONLY_OPT
@@ -44,8 +44,8 @@ private:
         LimboBag *currentBag;  // pointer to current epoch bag for this process
         int checked;               // how far we've come in checking the announced epochs of other threads
         int opsSinceRead;
-        MultiLevelQueue<storeType> multiLevelQueue;
-
+        //MultiLevelQueue<storeType> multiLevelQueue;
+        AllocatorNew<storeType> allocatorNew;
         ThreadData() {}
 
     private:
@@ -106,7 +106,8 @@ void Reclaimer_debra::initThread(int tid) {
 }
 
 storeType *Reclaimer_debra::allocate(int tid, uint64_t len) {
-    return threadData[tid].multiLevelQueue.allocate(len);
+    //return threadData[tid].multiLevelQueue.allocate(len);
+    return threadData[tid].allocatorNew.allocate(len);
 }
 
 bool Reclaimer_debra::deallocate(int tid, storeType *ptr) {
@@ -121,7 +122,8 @@ void Reclaimer_debra::rotate_epoch_bag(int tid) {
                                                             NUMBER_OF_EPOCH_BAGS];
 
     //this->pool->addMoveFullBlocks(tid, freeable); // moves any full blocks (may leave a non-full block behind)
-    threadData[tid].multiLevelQueue.free_limbobag(freeable);
+    //threadData[tid].multiLevelQueue.free_limbobag(freeable);
+    threadData[tid].allocatorNew.free_limbobag(freeable);
     SOFTWARE_BARRIER;
 
 
