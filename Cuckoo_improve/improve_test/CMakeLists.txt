@@ -7,3 +7,4 @@ link_libraries(pthread)
 
 add_executable(table_test table_test.cpp new_map.hh assert_msg.h kick_haza_pointer.h)
 
+add_executable(kick_test kick_test.cpp)
