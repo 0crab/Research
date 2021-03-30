@@ -904,6 +904,9 @@ namespace libcuckoo {
                 return table_position{b.i2, static_cast<size_type>(res2),
                                       failure_key_duplicated};
             }
+
+
+
             if (res1 != -1) {
                 return table_position{b.i1, static_cast<size_type>(res1), ok};
             }
@@ -1158,6 +1161,54 @@ namespace libcuckoo {
         }
 
 
+
+        bool check_duplicate(table_position pos,TwoBuckets b, hash_value hv,char * key,uint64_t key_len){
+            for (int i = 0; i < static_cast<int>(slot_per_bucket()); ++i) {
+                if(pos.index  == b.i1 && pos.slot == i) continue;
+                //block when kick
+                size_type par_ptr;
+                do{
+                    par_ptr = buckets_.read_from_bucket_slot(b.i1,i);
+                }
+                while(is_kick_locked(par_ptr));
+
+                partial_t read_partial = get_partial(par_ptr);
+                uint64_t read_ptr = get_ptr(par_ptr);
+
+                if (read_ptr != (size_type) nullptr) {
+                    if (hv.partial != read_partial) {
+                        continue;
+                    }
+                    if (str_equal_to()(ITEM_KEY(read_ptr), ITEM_KEY_LEN(read_ptr), key, key_len)) {
+                        return false;
+                    }
+                }
+            }
+            for (int i = 0; i < static_cast<int>(slot_per_bucket()); ++i) {
+                if(pos.index  == b.i2 && pos.slot == i) continue;
+                //block when kick
+                size_type par_ptr;
+                do{
+                    par_ptr = buckets_.read_from_bucket_slot(b.i2,i);
+                }
+                while(is_kick_locked(par_ptr));
+
+                partial_t read_partial = get_partial(par_ptr);
+                uint64_t read_ptr = get_ptr(par_ptr);
+
+                if (read_ptr != (size_type) nullptr) {
+                    if (hv.partial != read_partial) {
+                        continue;
+                    }
+                    if (str_equal_to()(ITEM_KEY(read_ptr), ITEM_KEY_LEN(read_ptr), key, key_len)) {
+                        return false;
+                    }
+                }
+            }
+            return true;
+        }
+
+
         //true hit , false miss
         bool find(char *key, size_t len);
 
@@ -1272,6 +1323,7 @@ namespace libcuckoo {
                 uint64_t update_ptr = get_ptr(par_ptr);
                 if (check_ptr(update_ptr, key, key_len)) {
                     if (buckets_.try_updateKV(pos.index, pos.slot, par_ptr,merge_partial(hv.partial, (uint64_t) item))) {
+                        if(!check_duplicate(pos,b,hv,key,key_len)){cout <<"dup key"<<endl;assert(false);}
                         return false;
                     }
                 }
