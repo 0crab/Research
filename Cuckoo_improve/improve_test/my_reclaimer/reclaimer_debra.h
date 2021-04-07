@@ -64,8 +64,7 @@ private:
     const int NUM_PROCESSES;
 
 
-    bool startOp(int tid);
-    void endOp(int tid);
+
     void retire(int tid,storeType * ptr);
     void rotate_epoch_bag(int tid);
 
@@ -73,6 +72,9 @@ public:
 
     Reclaimer_debra(int thread_num);
     void initThread(int tid = 0);
+
+    bool startOp(int tid);
+    void endOp(int tid);
 
     storeType * load(int tid, std::atomic<uint64_t> &ptr);
     void read(int tid);
@@ -112,8 +114,8 @@ storeType *Reclaimer_debra::allocate(int tid, uint64_t len) {
 
 bool Reclaimer_debra::deallocate(int tid, storeType *ptr) {
     retire(tid, (storeType *)((uint64_t)ptr & brown_ptr_mask));
-    startOp(tid);
-    endOp(tid);
+    //startOp(tid);
+    //endOp(tid);
 }
 
 void Reclaimer_debra::rotate_epoch_bag(int tid) {
@@ -185,12 +187,12 @@ storeType *Reclaimer_debra::load(int tid, atomic<uint64_t> &ptr) {
     holder = ptr.load(std::memory_order_relaxed);
     if (holder == 0) return (storeType *)holder;
 
-    startOp(tid);
+    //startOp(tid);
     return (storeType *)ptr.load(std::memory_order_relaxed);
 }
 
 void Reclaimer_debra::read(int tid) {
-    endOp(tid);
+    //endOp(tid);
 }
 
 void Reclaimer_debra::retire(int tid, storeType *ptr) {

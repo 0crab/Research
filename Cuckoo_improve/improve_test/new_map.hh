@@ -1173,6 +1173,18 @@ namespace libcuckoo {
             buckets_.deallocator->initThread(tid);
         }
 
+        class EpochManager{
+            friend class new_cuckoohash_map;
+
+            explicit EpochManager(buckets_t & bc):bc_(bc) {
+                bc_.deallocator->startOp(cuckoo_thread_id);
+            }
+            ~EpochManager(){
+                bc_.deallocator->endOp(cuckoo_thread_id);
+            }
+            buckets_t & bc_;
+        };
+
 
         //true hit , false miss
         bool find(char *key, size_t len);
@@ -1220,11 +1232,13 @@ namespace libcuckoo {
 
     bool new_cuckoohash_map::insert(char *key, size_t key_len, char *value, size_t value_len) {
         while(true){
+
             //Item *item = allocate_item(key, key_len, value, value_len);
             Item * item = buckets_.allocate_item(key,key_len,value,value_len);
             const hash_value hv = hashed_key(key, key_len);
 
             ParRegisterManager pm(block_when_rehashing(hv));
+            EpochManager epochManager(buckets_);
 
             TwoBuckets b = get_two_buckets(hv);
             table_position pos;
@@ -1284,6 +1298,8 @@ namespace libcuckoo {
         //protect from kick
         ParRegisterManager pm(block_when_rehashing(hv));
         while (true) {
+            EpochManager epochManager(buckets_);
+
             TwoBuckets b = get_two_buckets(hv);
             table_position pos = cuckoo_insert_loop(hv, b, key, key_len);
             if (pos.status == ok) {
